@@ -33,7 +33,7 @@ function modelOverride(): string | undefined {
 /**
  * Factory the backend loads (apps/api/src/integrations). Env (root .env):
  *   MODEL_API_KEY  required, Meta Model API key for Muse Spark
- *   AI_MODEL       optional, default muse-spark-1.3
+ *   AI_MODEL       optional, default muse-spark-1.2
  * Passing your own `model` (tests, stubs) skips the key check.
  */
 export function createAIService(overrides: HandyAIServiceOptions = {}): HandyAIService {
