@@ -36,6 +36,13 @@ export class EventBus {
     for (const l of this.firehose) if (!delivered.has(l)) safeCall(l, event);
   }
 
+  /** Sends an event to every open connection. */
+  broadcast(event: RealtimeEvent): void {
+    const all = new Set<Listener>(this.firehose);
+    for (const set of this.byUser.values()) for (const l of set) all.add(l);
+    for (const l of all) safeCall(l, event);
+  }
+
   connectionCount(): number {
     let n = this.firehose.size;
     for (const s of this.byUser.values()) n += s.size;

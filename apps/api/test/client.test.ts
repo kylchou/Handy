@@ -104,6 +104,57 @@ describe("API client", () => {
     await expect(api.categories.list()).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
   });
 
+  it("resets the demo data without logging anyone out", async () => {
+    const admin = client();
+    const margaret = client();
+    const james = client();
+    await admin.auth.login({ email: "admin@handy.demo", password: DEMO_PASSWORD });
+    await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+    await james.auth.login({ email: "james@handy.demo", password: DEMO_PASSWORD });
+    const newbie = client();
+    await newbie.auth.signup({ role: "CUSTOMER", firstName: "Temp", lastName: "User", email: "temp@example.com", password: "longenough1" });
+
+    // The demo flow above changed James's stats and Margaret's history.
+    expect((await james.workers.getProfile()).completedJobs).toBe(88);
+    expect((await margaret.customers.history()).length).toBeGreaterThan(1);
+    await expect(james.admin.resetDemo()).rejects.toMatchObject({ status: 403 });
+
+    const events: RealtimeEvent[] = [];
+    await new Promise<void>((resolve) => {
+      const stop = margaret.realtime.subscribe((e) => events.push(e), { transport: "ws", onOpen: resolve });
+      afterAll(stop);
+    });
+    expect(await admin.admin.resetDemo()).toEqual({ ok: true });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(events.some((e) => e.type === "DEMO_RESET")).toBe(true);
+
+    // Same sessions still work, and everything is back to the seeded state.
+    const profile = await james.workers.getProfile();
+    expect(profile).toMatchObject({ completedJobs: 87, rating: 4.9, ratingCount: 80 });
+    expect(profile.qualifications.map((q) => q.serviceCategoryId).sort()).toEqual(["HOME_MAINTENANCE", "MOVING_ASSISTANCE"]);
+    const history = await margaret.customers.history();
+    expect(history).toHaveLength(1);
+    expect(history[0]!.worker?.displayName).toBe("Maria L.");
+    expect(await margaret.notifications.list()).toHaveLength(0);
+    expect(await james.jobs.available()).toHaveLength(0);
+    await expect(client().auth.login({ email: "temp@example.com", password: "longenough1" })).rejects.toMatchObject({ status: 401 });
+    expect((await admin.admin.stats()).activeRequests).toBe(0);
+  });
+
+  it("refuses to reset when demo reset is turned off", async () => {
+    const locked = await buildApp({
+      config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", allowDemoReset: false }),
+      dbHandle: handle,
+      logger: false,
+      backgroundJobs: false,
+    });
+    const url = await locked.app.listen({ port: 0, host: "127.0.0.1" });
+    const admin = createApiClient({ baseUrl: url });
+    await admin.auth.login({ email: "admin@handy.demo", password: DEMO_PASSWORD });
+    await expect(admin.admin.resetDemo()).rejects.toMatchObject({ status: 403 });
+    await locked.app.close();
+  });
+
   it("passes query params through", async () => {
     const admin = client();
     await admin.auth.login({ email: "admin@handy.demo", password: DEMO_PASSWORD });

@@ -15,6 +15,7 @@ export interface AppConfig {
   matchExpandAfterSeconds: number;
   matchOfferTtlSeconds: number;
   platformFeeCents: number;
+  allowDemoReset: boolean;
   aiServiceModule: string;
   matchingServiceModule: string;
 }
@@ -38,6 +39,7 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     matchExpandAfterSeconds: Number(env.MATCH_EXPAND_AFTER_SECONDS ?? 120),
     matchOfferTtlSeconds: Number(env.MATCH_OFFER_TTL_SECONDS ?? 300),
     platformFeeCents: Number(env.PLATFORM_FEE_CENTS ?? 500),
+    allowDemoReset: (env.ALLOW_DEMO_RESET ?? (env.NODE_ENV === "production" ? "false" : "true")) === "true",
     aiServiceModule: env.AI_SERVICE_MODULE ?? "@handy/ai",
     matchingServiceModule: env.MATCHING_SERVICE_MODULE ?? "@handy/matching",
     ...overrides,

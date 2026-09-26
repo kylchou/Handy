@@ -26,6 +26,8 @@ export const RealtimeEventType = {
   MESSAGE_RECEIVED: "MESSAGE_RECEIVED",
   RATING_SUBMITTED: "RATING_SUBMITTED",
   NOTIFICATION: "NOTIFICATION",
+  /** Sent to everyone: an admin reset the demo data, so reload whatever is on screen. */
+  DEMO_RESET: "DEMO_RESET",
 } as const;
 export type RealtimeEventType = (typeof RealtimeEventType)[keyof typeof RealtimeEventType];
 
@@ -54,7 +56,8 @@ export type RealtimeEvent =
   | EventBase<"JOB_CANCELLED", JobRef & { cancelledBy: "CUSTOMER" | "WORKER" | "ADMIN" }>
   | EventBase<"MESSAGE_RECEIVED", { jobId: string; message: JobMessageDTO }>
   | EventBase<"RATING_SUBMITTED", { jobId: string; workerId: string; score: number }>
-  | EventBase<"NOTIFICATION", { notification: NotificationDTO }>;
+  | EventBase<"NOTIFICATION", { notification: NotificationDTO }>
+  | EventBase<"DEMO_RESET", Record<string, never>>;
 
 /** Sent once when a realtime connection opens. */
 export interface RealtimeHello {

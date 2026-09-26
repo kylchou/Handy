@@ -211,6 +211,8 @@ export function createApiClient(options: ApiClientOptions) {
       customers: (): R<"GET /admin/customers"> => get("/admin/customers"),
       setVerification: (workerId: string, verificationStatus: VerificationStatus): R<"PATCH /admin/workers/:workerId/verification"> =>
         patch(`/admin/workers/${id(workerId)}/verification`, { verificationStatus }),
+      /** Puts the database back to the starting demo data. */
+      resetDemo: (): R<"POST /admin/demo/reset"> => post("/admin/demo/reset"),
     },
 
     realtime: {

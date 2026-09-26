@@ -152,6 +152,8 @@ Saved messages like "James is on the way." so they're still there after a refres
 
 `GET /admin/stats`, `/admin/requests`, `/admin/jobs`, `/admin/workers`, `/admin/customers`, and `PATCH /admin/workers/:id/verification` with `{ verificationStatus }`. Only `VERIFIED` workers get job offers.
 
+`POST /admin/demo/reset` puts everything back to the starting demo data: all requests, jobs, chats, and notifications are deleted, accounts made after seeding are removed, and the demo workers' ratings and stats go back to normal. The demo accounts keep the same ids, so nobody gets logged out. Everyone connected gets a `DEMO_RESET` event so the apps can reload. It's turned off when `NODE_ENV=production` unless `ALLOW_DEMO_RESET=true`.
+
 ## Live updates
 
 Pass the token in the URL since you can't set headers on these. Use whichever one you want, they send the same thing:
@@ -175,6 +177,7 @@ First message is `{ type: "CONNECTED", userId }`. After that every event is `{ t
 | `MESSAGE_RECEIVED` | both chat users | `data.message` |
 | `RATING_SUBMITTED` | worker | |
 | `NOTIFICATION` | recipient | New saved notification (`data.notification`) |
+| `DEMO_RESET` | everyone | An admin reset the demo data, reload the page |
 
 Admins get every event.
 

@@ -330,4 +330,5 @@ export interface ApiResponses {
   "GET /admin/workers": AdminWorkerDTO[];
   "GET /admin/customers": AdminCustomerDTO[];
   "PATCH /admin/workers/:workerId/verification": WorkerProfileDTO;
+  "POST /admin/demo/reset": { ok: true };
 }

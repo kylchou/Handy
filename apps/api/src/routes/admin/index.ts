@@ -20,6 +20,8 @@ export async function adminRoutes(app: FastifyInstance, { services, guards }: Ro
 
   app.get("/admin/customers", { preHandler: guards.admin }, async () => services.admin.customers());
 
+  app.post("/admin/demo/reset", { preHandler: guards.admin }, async () => services.admin.resetDemo());
+
   app.patch<IdParams<"workerId">>("/admin/workers/:workerId/verification", { preHandler: guards.admin }, async (req) => {
     const { verificationStatus } = parse(updateVerificationSchema, req.body);
     return services.admin.setVerification(req.params.workerId, verificationStatus);

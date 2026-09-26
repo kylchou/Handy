@@ -1,5 +1,5 @@
 import { and, count, eq, gte, inArray } from "drizzle-orm";
-import { jobs, serviceRequests, workerProfiles } from "@handy/db";
+import { jobs, resetDemoData, serviceRequests, workerProfiles } from "@handy/db";
 import {
   ACTIVE_JOB_STATUSES,
   type AdminCustomerDTO,
@@ -9,7 +9,7 @@ import {
   type VerificationStatus,
   type WorkerProfileDTO,
 } from "@handy/contracts";
-import { notFound } from "../lib/errors";
+import { forbidden, notFound } from "../lib/errors";
 import { todayIn } from "../lib/time";
 import { jobsRepo } from "../repositories/jobs";
 import { customerProfilesRepo, usersRepo } from "../repositories/users";
@@ -86,6 +86,15 @@ export class AdminService {
         openRequestCount: mine.filter((c) => c.status === "SEARCHING" || c.status === "MATCHED").reduce((s, c) => s + c.n, 0),
       };
     });
+  }
+
+  /** Restores the seeded demo state and tells every open app to reload. */
+  async resetDemo(): Promise<{ ok: true }> {
+    if (!this.ctx.config.allowDemoReset) throw forbidden("Demo reset is turned off on this server.");
+    await resetDemoData(this.ctx.db);
+    this.ctx.bus.broadcast({ type: "DEMO_RESET", at: new Date().toISOString(), data: {} });
+    this.ctx.log.warn("demo data was reset");
+    return { ok: true };
   }
 
   async setVerification(workerId: string, verificationStatus: VerificationStatus): Promise<WorkerProfileDTO> {
