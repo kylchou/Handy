@@ -105,7 +105,7 @@ const ROUTE_DOCS: Record<keyof ApiResponses, RouteDoc> = {
   "PATCH /admin/workers/:workerId/verification": { tag: "Admin", summary: "Verify (or un-verify) a worker", returns: "WorkerProfileDTO", who: "admin", body: updateVerificationSchema, notes: "Only VERIFIED workers get job offers." },
   "POST /admin/demo/reset": { tag: "Admin", summary: "Reset to the starting demo data", returns: "{ ok: true }", who: "admin", notes: "Nobody gets logged out. Off in production unless ALLOW_DEMO_RESET=true." },
   "GET /admin/demo/autopilot": { tag: "Admin", summary: "Is the demo autopilot on", returns: "AutopilotStatusDTO", who: "admin" },
-  "PUT /admin/demo/autopilot": { tag: "Admin", summary: "Turn the demo autopilot on or off", returns: "AutopilotStatusDTO", who: "admin", body: setAutopilotSchema, notes: "While on, new requests get accepted by the best matched worker and moved to done one step every stepSeconds (default 8). Off in production unless ALLOW_DEMO_RESET=true." },
+  "PUT /admin/demo/autopilot": { tag: "Admin", summary: "Turn the demo autopilot on or off", returns: "AutopilotStatusDTO", who: "admin", body: setAutopilotSchema, notes: "While on, new requests get accepted by the best matched worker and moved to done one step every stepSeconds (default 8). With hold: true, accepted jobs wait until hold is set back to false. Off in production unless ALLOW_DEMO_RESET=true." },
 };
 
 const TAGS = ["Auth", "AI chat", "Requests", "Jobs", "Customers", "Caregivers", "Workers", "Notifications", "Admin", "Realtime"];

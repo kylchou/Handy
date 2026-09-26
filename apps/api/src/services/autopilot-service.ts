@@ -18,6 +18,9 @@ const NEXT: Partial<Record<JobStatus, JobStatus>> = {
  * from the customer app. While it's on, new requests get accepted by the best
  * matched worker, then moved along one step every `stepSeconds`.
  *
+ * With `hold` on, jobs it accepts wait at ACCEPTED until hold is turned off,
+ * so the presenter can talk through the job page first.
+ *
  * Everything goes through the normal JobService calls as that worker (it even
  * enters the arrival code), so the customer sees exactly what they would with
  * a real person. Only requests made after it's turned on are touched. State is
@@ -26,6 +29,7 @@ const NEXT: Partial<Record<JobStatus, JobStatus>> = {
 export class DemoAutopilot {
   private enabled = false;
   private stepSeconds = 8;
+  private hold = false;
   private since = new Date();
   private jobIds = new Set<string>();
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -37,12 +41,13 @@ export class DemoAutopilot {
   ) {}
 
   status(): AutopilotStatusDTO {
-    return { enabled: this.enabled, stepSeconds: this.stepSeconds, activeJobIds: [...this.jobIds] };
+    return { enabled: this.enabled, stepSeconds: this.stepSeconds, hold: this.hold, activeJobIds: [...this.jobIds] };
   }
 
   set(body: SetAutopilotBody, opts: { timer?: boolean } = {}): AutopilotStatusDTO {
     if (!this.ctx.config.allowDemoReset) throw forbidden("Demo tools are turned off on this server.");
     if (body.stepSeconds) this.stepSeconds = body.stepSeconds;
+    if (body.hold !== undefined) this.hold = body.hold;
     if (body.enabled && !this.enabled) {
       this.since = new Date();
       this.jobIds.clear();
@@ -53,7 +58,7 @@ export class DemoAutopilot {
     }
     if (!body.enabled) this.stop();
     this.enabled = body.enabled;
-    this.ctx.log.info({ enabled: this.enabled, stepSeconds: this.stepSeconds }, "demo autopilot changed");
+    this.ctx.log.info({ enabled: this.enabled, stepSeconds: this.stepSeconds, hold: this.hold }, "demo autopilot changed");
     return this.status();
   }
 
@@ -103,6 +108,7 @@ export class DemoAutopilot {
         this.jobIds.delete(jobId); // finished, cancelled, or wiped by a demo reset
         continue;
       }
+      if (this.hold && job.status === "ACCEPTED") continue;
       if (now.getTime() - lastChange(job) < this.stepSeconds * 1000) continue;
       try {
         await this.jobs.updateStatus({ id: job.workerId, role: "WORKER" }, job.id, next, { arrivalCode: job.arrivalCode ?? undefined });

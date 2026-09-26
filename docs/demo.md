@@ -8,7 +8,7 @@ About 3 minutes. One person drives the customer app and one person talks. The au
 - [ ] Start the backend: `pnpm dev:api`. The log should say `Loaded @handy/ai`
 - [ ] Start the customer app: `pnpm dev:customer`, and open http://localhost:3000 (or the hosted URLs if Arjun has them up)
 - [ ] `pnpm demo reset` so everything starts clean
-- [ ] `pnpm demo autopilot on 6` (a fake worker accepts and finishes jobs, 6 seconds per step)
+- [ ] `pnpm demo autopilot on 6` (a fake worker accepts new requests and waits until you say go, then moves 6 seconds per step)
 - [ ] Log in as `margaret@handy.demo` / `password123`
 - [ ] Phone or browser zoomed so judges can read it. Ringer off
 - [ ] If it's hosted: open `/health` on the API a few minutes early to wake it up
@@ -35,7 +35,7 @@ When it asks to confirm, say *"Yes, that's right"*. The summary card shows up.
 
 Tap **Confirm Request**. Say: *"It goes to the best nearby workers who are qualified, verified, and free at that time. It weighs distance, rating, and experience."*
 
-After about 6 seconds James accepts, and the screen switches by itself.
+After about 6 seconds James accepts, and the screen switches by itself. The job stays at "accepted" until you run `pnpm demo go`, so take your time on the next two steps.
 
 **4. The job page**
 
@@ -51,7 +51,7 @@ In a terminal, run `pnpm demo scam`. James's next message asks to be paid on Ven
 
 **6. Live status**
 
-The tracker moves by itself: on the way, arrived, working, done. Say: *"That's live, no refreshing."*
+In the terminal, run `pnpm demo go`. The tracker moves by itself every 6 seconds: on the way, arrived, working, done. Say: *"That's live, no refreshing."*
 
 **7. Rate and book again**
 
@@ -67,7 +67,7 @@ Go to **Get Help** and type *"I fell and I can't get up"*. The emergency card wi
 pnpm demo reset
 ```
 
-Then refresh the customer app. Nobody gets logged out, and the autopilot stays on.
+Then refresh the customer app. Nobody gets logged out, the autopilot stays on, and the next job will wait for `pnpm demo go` again.
 
 ## If something goes wrong
 
@@ -76,6 +76,8 @@ Then refresh the customer app. Nobody gets logged out, and the autopilot stays o
 | The AI is slow or not answering | Keep talking. After 45 seconds the backend answers with its built-in assistant, which handles the couch example fine |
 | "Can't reach the server" | The API stopped. Run `pnpm dev:api` again, then `pnpm demo autopilot on 6` (the autopilot turns off when the API restarts) |
 | Nobody accepts | `pnpm demo status`. The autopilot is probably off |
+| The job is stuck on "You're all set" | That's the hold. Run `pnpm demo go` |
+| `pnpm demo scam` says there's no active job | The job already finished. Do it before `pnpm demo go` next time |
 | The screen looks stuck | Refresh. Everything's saved on the backend |
 | Everything's weird | `pnpm demo reset`, refresh, log in again |
 

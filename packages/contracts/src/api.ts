@@ -317,6 +317,8 @@ export const setAutopilotSchema = z.object({
   enabled: z.boolean(),
   /** Seconds between each step (accept, on the way, arrived, started, done). */
   stepSeconds: z.number().int().min(2).max(60).optional(),
+  /** Accept new requests but keep them at "accepted" until this is set back to false. Gives the presenter time to talk. */
+  hold: z.boolean().optional(),
 });
 export type SetAutopilotBody = z.input<typeof setAutopilotSchema>;
 
