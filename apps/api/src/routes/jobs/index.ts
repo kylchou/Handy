@@ -15,7 +15,7 @@ export async function jobRoutes(app: FastifyInstance, { services, guards }: Rout
     services.jobs.decline(req.user, req.params.offerId),
   );
 
-  app.get("/jobs", { preHandler: guards.auth }, async (req) => {
+  app.get("/jobs", { preHandler: guards.jobParticipant }, async (req) => {
     const { status } = parse(listJobsQuerySchema, req.query);
     return services.jobs.list(req.user, status);
   });
@@ -23,7 +23,7 @@ export async function jobRoutes(app: FastifyInstance, { services, guards }: Rout
   app.get<IdParams<"jobId">>("/jobs/:jobId", { preHandler: guards.auth }, async (req) => services.jobs.get(req.user, req.params.jobId));
 
   app.patch<IdParams<"jobId">>("/jobs/:jobId/status", { preHandler: guards.auth }, async (req) => {
-    const { status, reason } = parse(updateJobStatusSchema, req.body);
-    return services.jobs.updateStatus(req.user, req.params.jobId, status, reason);
+    const { status, reason, arrivalCode } = parse(updateJobStatusSchema, req.body);
+    return services.jobs.updateStatus(req.user, req.params.jobId, status, { reason, arrivalCode });
   });
 }

@@ -12,6 +12,9 @@ import type {
   AdminCustomerDTO,
   AdminStatsDTO,
   AdminWorkerDTO,
+  CaregiverInviteDTO,
+  CaregiverLinkDTO,
+  CaregiverPersonDTO,
   ConversationDTO,
   ConversationMessageDTO,
   CustomerHistoryItemDTO,
@@ -20,6 +23,8 @@ import type {
   JobMessageDTO,
   JobOfferDTO,
   NotificationDTO,
+  PastWorkerDTO,
+  RecurringScheduleDTO,
   RatingDTO,
   ServiceCategoryDTO,
   ServiceRequestDTO,
@@ -50,6 +55,12 @@ export type ApiErrorCode =
   | "REQUEST_INCOMPLETE"
   | "POTENTIAL_EMERGENCY"
   | "JOB_NO_LONGER_AVAILABLE"
+  | "SCHEDULE_CONFLICT"
+  | "INVALID_ARRIVAL_CODE"
+  | "TOO_MANY_ATTEMPTS"
+  | "INVALID_INVITE"
+  | "RATE_LIMITED"
+  | "SENSITIVE_INFO"
   | "INTERNAL_ERROR";
 
 /** Body of every non-2xx response. */
@@ -93,7 +104,7 @@ const communicationPreferencesSchema = z.object({
 // ---------- Auth ----------
 
 export const signupSchema = z.object({
-  role: z.enum(["CUSTOMER", "WORKER"]),
+  role: z.enum(["CUSTOMER", "WORKER", "CAREGIVER"]),
   firstName: z.string().trim().min(1).max(100),
   lastName: z.string().trim().min(1).max(100),
   email: z.string().trim().toLowerCase().pipe(z.email()),
@@ -234,6 +245,10 @@ export const createServiceRequestSchema = z.object({
   requestedEndTime: timeSchema.optional(),
   urgency: z.enum(URGENCIES).optional(),
   specialRequirements: z.array(z.string().max(500)).max(20).optional(),
+  /** Ask this worker first (e.g. someone from GET /customers/me/past-workers). */
+  preferredWorkerId: z.string().uuid().nullable().optional(),
+  /** Make it repeat on the same day and time. */
+  repeat: z.enum(["WEEKLY", "BIWEEKLY"]).nullable().optional(),
 });
 export type CreateServiceRequestBody = z.infer<typeof createServiceRequestSchema>;
 
@@ -257,6 +272,8 @@ export interface RequestMatchesResponse {
 export const updateJobStatusSchema = z.object({
   status: z.enum(JOB_STATUSES),
   reason: z.string().max(500).optional(),
+  /** Required when a worker moves the job to ARRIVED. */
+  arrivalCode: z.string().regex(/^\d{4}$/, "The code is 4 digits").optional(),
 });
 export type UpdateJobStatusBody = z.infer<typeof updateJobStatusSchema>;
 
@@ -277,6 +294,17 @@ export const createRatingSchema = z.object({
 });
 export type CreateRatingBody = z.infer<typeof createRatingSchema>;
 
+// ---------- Caregivers ----------
+
+export const acceptCaregiverInviteSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z0-9]{6}$/, "The invite code is 6 letters and numbers"),
+});
+export type AcceptCaregiverInviteBody = z.input<typeof acceptCaregiverInviteSchema>;
+
 // ---------- Admin ----------
 
 export const updateVerificationSchema = z.object({
@@ -290,12 +318,16 @@ export type UpdateVerificationBody = z.infer<typeof updateVerificationSchema>;
 export interface ApiResponses {
   "POST /auth/signup": AuthResponse;
   "POST /auth/login": AuthResponse;
+  "POST /auth/logout": void;
   "GET /auth/me": MeResponse;
   "PATCH /users/me": UserDTO;
   "GET /service-categories": ServiceCategoryDTO[];
   "GET /customers/me/profile": CustomerProfileDTO;
   "PUT /customers/me/profile": CustomerProfileDTO;
   "GET /customers/me/history": CustomerHistoryItemDTO[];
+  "GET /customers/me/past-workers": PastWorkerDTO[];
+  "GET /customers/me/schedules": RecurringScheduleDTO[];
+  "DELETE /customers/me/schedules/:scheduleId": RecurringScheduleDTO;
   "GET /workers/me/profile": WorkerProfileDTO;
   "PUT /workers/me/profile": WorkerProfileDTO;
   "PUT /workers/me/qualifications": WorkerProfileDTO;
@@ -329,4 +361,11 @@ export interface ApiResponses {
   "GET /admin/workers": AdminWorkerDTO[];
   "GET /admin/customers": AdminCustomerDTO[];
   "PATCH /admin/workers/:workerId/verification": WorkerProfileDTO;
+  "POST /admin/demo/reset": { ok: true };
+  "POST /customers/me/caregivers/invite": CaregiverInviteDTO;
+  "GET /customers/me/caregivers": CaregiverLinkDTO[];
+  "DELETE /customers/me/caregivers/:caregiverId": void;
+  "POST /caregivers/me/links": CaregiverPersonDTO;
+  "GET /caregivers/me/people": CaregiverPersonDTO[];
+  "DELETE /caregivers/me/people/:customerId": void;
 }

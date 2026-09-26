@@ -13,7 +13,13 @@ export interface AppConfig {
   seedOnStart: boolean;
   matchInitialOffers: number;
   matchExpandAfterSeconds: number;
+  matchOfferTtlSeconds: number;
   platformFeeCents: number;
+  allowDemoReset: boolean;
+  rateLimitEnabled: boolean;
+  docsEnabled: boolean;
+  geocoder: "nominatim" | "off";
+  geocoderContact: string;
   aiServiceModule: string;
   matchingServiceModule: string;
 }
@@ -35,7 +41,13 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     seedOnStart: (env.SEED_ON_START ?? "true") === "true",
     matchInitialOffers: Number(env.MATCH_INITIAL_OFFERS ?? 5),
     matchExpandAfterSeconds: Number(env.MATCH_EXPAND_AFTER_SECONDS ?? 120),
+    matchOfferTtlSeconds: Number(env.MATCH_OFFER_TTL_SECONDS ?? 300),
     platformFeeCents: Number(env.PLATFORM_FEE_CENTS ?? 500),
+    geocoder: env.GEOCODER === "off" ? "off" : "nominatim",
+    geocoderContact: env.GEOCODER_CONTACT ?? "hackathon project",
+    docsEnabled: (env.DOCS_ENABLED ?? (env.NODE_ENV === "production" ? "false" : "true")) === "true",
+    rateLimitEnabled: (env.RATE_LIMIT_ENABLED ?? "true") === "true",
+    allowDemoReset: (env.ALLOW_DEMO_RESET ?? (env.NODE_ENV === "production" ? "false" : "true")) === "true",
     aiServiceModule: env.AI_SERVICE_MODULE ?? "@handy/ai",
     matchingServiceModule: env.MATCHING_SERVICE_MODULE ?? "@handy/matching",
     ...overrides,

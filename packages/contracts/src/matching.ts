@@ -32,6 +32,8 @@ export interface WorkerCandidate {
   weeklyAvailability: AvailabilitySlotDTO[];
   /** Existing active jobs, so double-booking can be avoided. */
   bookedWindows: Array<{ date: string; startTime: string; endTime: string }>;
+  /** This worker's history with the customer who made the request. Workers they rated 1-2 stars are already excluded. */
+  withCustomer?: { completedJobs: number; lastRating: number | null };
 }
 
 export interface WorkerMatch {

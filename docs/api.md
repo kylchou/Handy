@@ -1,162 +1,280 @@
-# The Handy API
+# API docs
 
-This is everything you need to talk to the backend. Everything lives under `http://localhost:4000/api/v1`, and every type I mention here comes from `@handy/contracts`. If you ever want to know exactly what an endpoint sends back, look at `ApiResponses` in [packages/contracts/src/api.ts](../packages/contracts/src/api.ts). It lists every response type in one spot.
+Base URL is `http://localhost:4000/api/v1`. When the API is running you can also open **http://localhost:4000/docs** to see every endpoint and try them in the browser: log in with `POST /auth/login`, copy the token, and click Authorize. All the types mentioned here come from `@handy/contracts`. If you want the exact response type for an endpoint, check `ApiResponses` in [packages/contracts/src/api.ts](../packages/contracts/src/api.ts).
 
-## A few ground rules
+## Using the API client
 
-- **Logging in.** Once you sign up or log in, you get a token. Send it on every request as `Authorization: Bearer <token>`.
-- **Errors.** Whenever something goes wrong, the body always looks like `{ "error": { "code", "message", "details?" } }`. I wrote every `message` in plain English on purpose, so you can show it straight to the user without translating anything. The full list of codes is in `ApiErrorCode`.
-- **Dates and times.** Dates are `YYYY-MM-DD` and times are 24-hour `HH:mm`, both in `APP_TIMEZONE` (Eastern by default). Timestamps are ISO 8601.
-- **Money.** It's always in cents. So `3500` means $35.00. I know it's slightly annoying, but it keeps us from dealing with weird decimal rounding.
-- **Validation.** The backend checks every request body with the zod schemas in `@handy/contracts`. You can use those exact same schemas to validate your forms, so the frontend and backend never disagree about what's allowed.
+You don't need to write fetch calls yourself. `@handy/contracts` has a typed client that covers every endpoint in this doc:
+
+```ts
+import { createApiClient, ApiRequestError } from "@handy/contracts";
+
+const api = createApiClient({
+  baseUrl: "http://localhost:4000",
+  token: localStorage.getItem("token"),
+  onTokenChange: (t) => (t ? localStorage.setItem("token", t) : localStorage.removeItem("token")),
+  onUnauthorized: () => router.push("/login"),
+});
+
+await api.auth.login({ email, password }); // saves the token for you
+const offers = await api.jobs.available();
+await api.jobs.acceptOffer(offers[0].id);
+
+try {
+  await api.requests.create({ conversationId });
+} catch (err) {
+  if (err instanceof ApiRequestError) showError(err.message); // plain English, fine to show
+}
+
+// live updates, returns a function that disconnects
+const stop = api.realtime.subscribe((event) => {
+  if (event.type === "WORKER_EN_ROUTE") setStatus("On the way");
+});
+```
+
+A few things to know:
+
+- Login and signup save the token, logout clears it. Use `onTokenChange` to keep it in localStorage.
+- Any error throws an `ApiRequestError` with `status`, `code`, and `message`. If the server can't be reached you get `code: "NETWORK_ERROR"` and `status: 0`.
+- `realtime.subscribe` uses SSE by default. Pass `{ transport: "ws" }` for WebSocket. Either way it reconnects by itself and catches up on anything it missed. Pass `onResync` to refetch your screen in the rare case it can't catch up.
+- The method names follow the endpoint tables below, e.g. `api.requests.cancel(id)` is `POST /requests/:id/cancel`.
+- `api.jobs.updateStatus(jobId, status, { reason?, arrivalCode? })` takes options as the last argument, and `api.jobs.arrive(jobId, code)` is a shortcut for arriving.
+
+## Basics
+
+- **Auth:** signup/login gives you a token. Send it as `Authorization: Bearer <token>`.
+- **Errors:** always look like `{ "error": { "code", "message", "details?" } }`. The `message` is fine to show to users. Codes are in `ApiErrorCode`.
+- **Dates/times:** dates are `YYYY-MM-DD`, times are 24h `HH:mm`, in `APP_TIMEZONE` (Eastern by default). Timestamps are ISO strings.
+- **Money:** in cents, so `3500` = $35.00.
+- **Validation:** request bodies are checked with the zod schemas in `@handy/contracts`. You can use the same schemas for your forms.
+- **Rate limits:** a few endpoints are limited. Going over gets a 429 `RATE_LIMITED` with a `Retry-After` header and `details.retryAfterSeconds`.
+
+  | Endpoint | Limit |
+  | --- | --- |
+  | `POST /auth/login` | 10 tries per 15 min, per IP + email |
+  | `POST /auth/signup` | 10 per hour, per IP |
+  | `POST /ai/conversations/:id/messages` | 20 per minute, per user |
+  | `POST /ai/conversations` | 30 per hour, per user |
+  | `POST /caregivers/me/links` | 10 per 15 min, per user |
+
+  Set `RATE_LIMIT_ENABLED=false` in `.env` if they get in your way while testing locally.
 
 ## Roles
 
-There are three: `CUSTOMER`, `WORKER`, and `ADMIN`. You pick customer or worker when you sign up, and that's permanent. Admin accounts only come from the seed data. If you call something your role isn't allowed to use, you'll get a 403 `FORBIDDEN`.
+`CUSTOMER`, `WORKER`, `CAREGIVER`, `ADMIN`. You pick customer, worker, or caregiver at signup. Admin only comes from the seed data. Wrong role = 403.
 
 ## Endpoints
 
 ### Accounts
 
-| Endpoint | Who can call it | What it does |
+| Endpoint | Who | Notes |
 | --- | --- | --- |
-| `POST /auth/signup` | anyone | Body is `signupSchema`, and `role` has to be `CUSTOMER` or `WORKER`. New workers start out `PENDING` verification. Returns `AuthResponse`. |
-| `POST /auth/login` | anyone | `{ email, password }` gets you an `AuthResponse` |
-| `POST /auth/logout` | logged in | Kills the token right away. Returns 204. |
-| `GET /auth/me` | logged in | `MeResponse`, which is the user plus their customer or worker profile |
+| `POST /auth/signup` | anyone | Body is `signupSchema`. `role` is `CUSTOMER` or `WORKER`. New workers start as `PENDING` verification. |
+| `POST /auth/login` | anyone | `{ email, password }` |
+| `POST /auth/logout` | logged in | Invalidates the token. Returns 204. |
+| `GET /auth/me` | logged in | User + their customer or worker profile |
 | `PATCH /users/me` | logged in | `{ firstName?, lastName?, phone? }` |
-| `GET /service-categories` | anyone | `ServiceCategoryDTO[]`. Each category's `id` is just its code, like `MOVING_ASSISTANCE`. |
+| `GET /service-categories` | anyone | List of categories. The `id` is the code, e.g. `MOVING_ASSISTANCE`. |
 
 ### Customers
 
-| Endpoint | What it does |
+| Endpoint | Notes |
 | --- | --- |
-| `GET /customers/me/profile` | `CustomerProfileDTO` |
-| `PUT /customers/me/profile` | Address, coordinates, accessibility and communication preferences, and an emergency contact |
-| `GET /customers/me/history` | `CustomerHistoryItemDTO[]`, which has the service, worker, date, status, price, and rating for each job. It's basically the whole history screen. |
+| `GET /customers/me/profile` | |
+| `PUT /customers/me/profile` | Address, coordinates, accessibility/communication preferences, emergency contact |
+| `GET /customers/me/history` | Everything for the history screen (service, worker, date, status, price, rating) |
+| `GET /customers/me/schedules` | Their repeating requests |
+| `DELETE /customers/me/schedules/:scheduleId` | Stop a repeating request |
+| `GET /customers/me/past-workers` | Everyone who's helped this customer before, with their last rating. For a "Book James again" button. |
 
-### The AI conversation
+### AI chat
 
-The frontend should never call an AI model directly. Everything goes through these three endpoints, and the backend deals with the rest.
+The frontend never calls the AI directly, it all goes through these.
 
-| Endpoint | What it does |
+| Endpoint | Notes |
 | --- | --- |
-| `POST /ai/conversations` | Starts a new conversation and gives you back the assistant's greeting |
-| `GET /ai/conversations/:id` | The conversation, what the AI has figured out so far, and every message |
-| `POST /ai/conversations/:id/messages` | Send `{ content }` and you get back a `SendConversationMessageResponse` |
+| `POST /ai/conversations` | Starts a conversation, returns the greeting message |
+| `GET /ai/conversations/:id` | Conversation, current draft, and messages |
+| `POST /ai/conversations/:id/messages` | Send `{ content }`, get back the AI's reply and the updated conversation |
 
-While the customer is chatting, `conversation.draft` fills up with whatever the AI has pieced together. When `conversation.readyToSubmit` turns `true`, that means nothing's missing anymore, and it's time to show the confirmation card built from `draft`.
+`conversation.draft` is what the AI has figured out so far. When `conversation.readyToSubmit` is `true`, show the confirmation card using `draft`.
 
-If `emergency` ever comes back as something other than null, please make it impossible to miss. It tells the person to call 911, and the backend won't let that request go through no matter what. We're not sending a gig worker to someone who might be having a heart attack.
+If `emergency` isn't null, show it clearly. It tells the user to call 911, and the request can't be submitted.
 
-### Service requests
+### Requests
 
-| Endpoint | Who | What it does |
+| Endpoint | Who | Notes |
 | --- | --- | --- |
-| `POST /requests` | customer | This is the **Confirm Request** button. Send `{ conversationId, ...overrides }`. Anything you put in there replaces what's in the draft, which is how the **Edit** button works. It creates the request as `SEARCHING` and sends it to the best-matched workers right away. If info is missing, you get a 422 `REQUEST_INCOMPLETE` with `details.missingInformation`. If it looks like an emergency, you get a 422 `POTENTIAL_EMERGENCY`. |
-| `GET /requests` | customer, admin | Customers only see their own, while admins see everything. You can add `?status=` to filter. |
-| `GET /requests/:id` | the customer, the assigned worker, admin | `ServiceRequestDTO`. It tells you how many workers are currently looking at it (`pendingOfferCount`), and once someone accepts, it includes the `jobId`. |
-| `POST /requests/:id/cancel` | the customer, admin | Only works while it's still `SEARCHING` |
-| `GET /requests/:id/matches` | the customer, admin | Every eligible worker, ranked, with their scores and the reasons behind them. This one's mainly for the admin dashboard, and it's great for showing judges how matching works. |
+| `POST /requests` | customer | The Confirm Request button. Send `{ conversationId, ...overrides }`. Any fields you include override the draft (that's how Edit works). Creates the request and sends it to matched workers. Returns 422 `REQUEST_INCOMPLETE` (with `details.missingInformation`) or 422 `POTENTIAL_EMERGENCY` if it can't go through. |
+| `GET /requests` | customer, admin | Customers get their own, admins get all. Optional `?status=`. |
+| `GET /requests/:id` | customer, assigned worker, admin | Includes `pendingOfferCount` and `jobId` once someone accepts. |
+| `POST /requests/:id/cancel` | customer, admin | Only while `SEARCHING` |
+| `GET /requests/:id/matches` | customer, admin | Ranked workers with scores and reasons. Mostly for the admin dashboard. |
 
-A request goes `SEARCHING → MATCHED → COMPLETED`, or it ends up `CANCELLED`.
+**Where the job is.** If the request's `location` is the customer's home address, we use the coordinates on their profile. Anywhere else gets looked up with OpenStreetMap, so distances and service radius checks use the real place. Saving an address on a customer or worker profile (or at signup) fills in `latitude`/`longitude` the same way, so you don't need to send them. Set `GEOCODER_CONTACT` in `.env` to an email or URL, their usage policy asks for it.
 
-### Jobs (the worker side)
+**Repeating requests.** Send `repeat: "WEEKLY"` or `repeat: "BIWEEKLY"` with `POST /requests` (or the AI sets it when they say "every Saturday" or "every other week"). That request becomes the first visit, and each visit after that gets posted to workers 3 days ahead with the same day, time, and details. Whoever did the last visit and got 4 or 5 stars is asked first next time, so it tends to be the same helper each week. Visits have a `scheduleId`. `GET /customers/me/schedules` lists them and `DELETE /customers/me/schedules/:id` stops one (already-posted visits stay booked). Cancelling one visit doesn't stop the rest.
 
-| Endpoint | Who | What it does |
+**Booking someone again.** Send `preferredWorkerId` when creating a request (or the AI sets it when the customer says "Can James come back?" or "same person as last time"). The request goes to that worker alone first. If they decline or don't answer in time, it goes to everyone like normal. If they can't do it at all (not available, doesn't do that kind of job), the customer gets told right away and it goes out to everyone. Workers the customer rated 4–5 stars also get a bump in matching, and workers they rated 1–2 stars never get their jobs again.
+
+Request statuses: `SEARCHING -> MATCHED -> COMPLETED`, or `CANCELLED`, or `EXPIRED` if nobody accepted before the requested time window ended. When a request expires, the customer gets a `REQUEST_EXPIRED` event and a notification asking if they want to pick another time. Requests for a time that's already passed get rejected with a 400.
+
+### Jobs
+
+| Endpoint | Who | Notes |
 | --- | --- | --- |
-| `GET /jobs/available` | worker | The jobs offered to this worker (`JobOfferDTO[]`). These only show a rough area, not the street address. Workers get the full address once they accept, since nobody's home address should get sent out to people who haven't even taken the job. |
-| `POST /jobs/offers/:offerId/accept` | worker | First one to accept gets it, and everyone after that gets a 409 `JOB_NO_LONGER_AVAILABLE`. Returns `JobDetailDTO`. |
+| `GET /jobs/available` | worker | Jobs offered to this worker. Only shows a general area, the full address shows up after accepting. Each offer has an `expiresAt` (5 minutes by default, set with `MATCH_OFFER_TTL_SECONDS`). After that it can't be accepted and goes to the next worker. |
+| `POST /jobs/offers/:offerId/accept` | worker | First to accept gets it. Anyone after that gets 409 `JOB_NO_LONGER_AVAILABLE`. If the worker already has a job at an overlapping time it's 409 `SCHEDULE_CONFLICT`. Accepting also removes the worker's other offers that overlap with it. |
 | `POST /jobs/offers/:offerId/decline` | worker | |
-| `GET /jobs` | logged in | Workers see their own jobs, customers see theirs, and admins see all of them. You can filter with `?status=`. |
-| `GET /jobs/:jobId` | the job's customer, the job's worker, admin | `JobDetailDTO`, which has the job, the request, the worker's public profile, the customer's first name and last initial, the distance, and the rating |
-| `PATCH /jobs/:jobId/status` | depends, see below | `{ status, reason? }` |
-| `GET /jobs/:jobId/messages` | the job's customer, the job's worker, admin | `JobMessageDTO[]` |
-| `POST /jobs/:jobId/messages` | the job's customer or worker | `{ content }`. Chat closes once the job is finished or cancelled. |
-| `POST /jobs/:jobId/rating` | the job's customer | `{ score: 1-5, comment? }`. You only get one rating per job, and only after it's done. It gets averaged into the worker's rating. |
+| `GET /jobs` | logged in | Your jobs (admins get all). Optional `?status=`. |
+| `GET /jobs/:jobId` | job's customer/worker, admin | Job + request + worker profile + customer name + distance + rating + `arrivalCode` (customer and admin only, always null for the worker) |
+| `PATCH /jobs/:jobId/status` | see below | `{ status, reason?, arrivalCode? }` |
+| `GET /jobs/:jobId/messages` | job's customer/worker, admin | |
+| `POST /jobs/:jobId/messages` | job's customer/worker | `{ content }`. Closed after the job is done or cancelled. Messages with a card or Social Security number are refused with 422 `SENSITIVE_INFO`. |
+| `POST /jobs/:jobId/rating` | job's customer | `{ score: 1-5, comment? }`. Once per job, after it's completed. |
 
-**How a job moves along.** The backend won't let a job skip steps, so there's no jumping from "accepted" straight to "done." The rules are exported as `JOB_STATUS_TRANSITIONS` and `canTransitionJob()` if you want to check them yourself:
+Job status order (can't skip steps):
 
 ```
-ACCEPTED ─► EN_ROUTE ─► ARRIVED ─► IN_PROGRESS ─► COMPLETED     (worker, admin)
-   │           │           │
-   └───────────┴───────────┴─► CANCELLED
+ACCEPTED -> EN_ROUTE -> ARRIVED -> IN_PROGRESS -> COMPLETED
 ```
 
-- The customer can cancel while the job is `ACCEPTED` or `EN_ROUTE`.
-- The worker or an admin can cancel any time before `IN_PROGRESS`.
-- If the **worker** is the one who cancels, the request doesn't just die. It goes back to `SEARCHING` and gets sent to other workers, so the customer isn't left stuck.
+Only the worker (or an admin) moves it forward.
 
-For the worker app, `nextWorkerJobStatus(status)` tells you what the one big button should do next ("I'm On My Way" → "I've Arrived" → "Start Job" → "Complete Job"). For the customer app, `JOB_STATUS_LABELS` has friendly text for every status.
+- Customer can cancel while `ACCEPTED` or `EN_ROUTE`.
+- Worker or admin can cancel any time before `IN_PROGRESS`.
+- If the worker cancels, the request goes back to `SEARCHING` and gets sent to other workers.
 
-### Worker profiles
+**Scam warnings in the chat.** Worker messages that look like a scam still get delivered, but they come with `flags` and a plain-language `warning` to show under the message:
 
-| Endpoint | What it does |
+- Asking to be paid outside the app (Venmo, Zelle, Cash App, "pay me directly", cash only)
+- Asking for gift cards
+- Asking for card, bank, Social Security, or Medicare details, or a password (Wi-Fi passwords are fine)
+
+The first time each kind shows up in a job, the customer gets a `SCAM_WARNING` notification ("Be careful: James asked you to pay outside the app."), and so do their caregivers and every admin. Darsh: show `warning` under the message in red or yellow.
+
+**Arrival code.** When a worker accepts, the customer gets a 4-digit `arrivalCode`. It's on their job and in the "James is helping you" notification. When the worker gets there, the customer reads it to them, and the worker has to send it to mark the job `ARRIVED` (`{ status: "ARRIVED", arrivalCode: "4821" }`, or `api.jobs.arrive(jobId, code)`). This proves the right person is at the door.
+
+- Wrong or missing code: 400 `INVALID_ARRIVAL_CODE`.
+- 5 wrong tries: 429 `TOO_MANY_ATTEMPTS`, and the worker can't mark that job arrived anymore. An admin can still do it without the code.
+
+Darsh: show the code big on the job screen once someone accepts. Arjun: the "I've Arrived" button needs a 4-digit input.
+
+Helpers in contracts: `canTransitionJob()` checks if a change is allowed, `nextWorkerJobStatus()` gives the next step for the worker's button, and `JOB_STATUS_LABELS` has display text for each status.
+
+### Worker profile
+
+| Endpoint | Notes |
 | --- | --- |
-| `GET /workers/me/profile` | `WorkerProfileDTO` |
+| `GET /workers/me/profile` | |
 | `PUT /workers/me/profile` | `{ bio?, serviceRadius?, address?, latitude?, longitude? }` |
-| `PUT /workers/me/qualifications` | `{ qualifications: [{ serviceCategoryId, qualificationLevel }] }`. This replaces the whole list, it doesn't add to it. |
-| `PUT /workers/me/availability` | `{ availabilityStatus?, slots?: [{ dayOfWeek, startTime, endTime }] }`, where `dayOfWeek` 0 is Sunday. Sending `slots` replaces the entire weekly schedule. |
-| `GET /workers/me/earnings` | `WorkerEarningsDTO` |
-| `GET /workers/:id` | `WorkerPublicDTO`. It's safe to show customers, since it only has a first name and last initial. |
-| `GET /workers/:id/ratings` | `RatingDTO[]` |
+| `PUT /workers/me/qualifications` | `{ qualifications: [{ serviceCategoryId, qualificationLevel }] }`. Replaces the whole list. |
+| `PUT /workers/me/availability` | `{ availabilityStatus?, slots?: [{ dayOfWeek, startTime, endTime }] }`. `dayOfWeek` 0 is Sunday. `slots` replaces the whole schedule. |
+| `GET /workers/me/earnings` | |
+| `GET /workers/:id` | Public profile (first name + last initial only) |
+| `GET /workers/:id/ratings` | |
+
+### Caregivers
+
+A caregiver is a family member who wants to keep an eye on things. They can see everything but can't change anything.
+
+Linking works with an invite code so the older adult has to agree to it:
+
+1. The customer makes a code with `POST /customers/me/caregivers/invite`. It's 6 characters, with no 0/O or 1/I so it's easy to read over the phone, and it's good for 24 hours.
+2. The caregiver signs up with `role: "CAREGIVER"` and enters it with `POST /caregivers/me/links { code }`. Codes work once.
+
+| Endpoint | Who | Notes |
+| --- | --- | --- |
+| `POST /customers/me/caregivers/invite` | customer | `{ code, expiresAt }` |
+| `GET /customers/me/caregivers` | customer | Who's linked |
+| `DELETE /customers/me/caregivers/:caregiverId` | customer | Remove someone |
+| `POST /caregivers/me/links` | caregiver | `{ code }`. Wrong, used, or expired code is 400 `INVALID_INVITE`. |
+| `GET /caregivers/me/people` | caregiver | The whole dashboard: for each person, their active jobs, requests still searching, and last 10 history items |
+| `DELETE /caregivers/me/people/:customerId` | caregiver | Unlink yourself |
+
+Caregivers get notifications for the stuff that matters, not every step:
+
+- A worker accepted ("James R. will help Margaret tomorrow at 3 PM.")
+- The worker arrived, or finished the job
+- A job got cancelled, or nobody could be found in time
+- **Emergency:** if the customer says something that sounds like an emergency to the AI, caregivers get "Margaret may need help right now." (only once per conversation)
+
+Caregivers never see the arrival code, and they can't use `/jobs`, `/requests`, or the AI chat directly, only their dashboard.
 
 ### Notifications
 
-These are the short messages like "James is on the way." They get saved, so even if someone refreshes the page or closes the app, they can still see what happened.
+Saved messages like "James is on the way." so they're still there after a refresh.
 
-| Endpoint | What it does |
+**Reminders** (type `JOB_REMINDER`) go out automatically for accepted jobs:
+
+- About a day before: the customer gets "Reminder: James is coming tomorrow at 10 AM." with their arrival code, the worker gets "Reminder: Moving help for Margaret T. tomorrow at 10 AM." with the address, and caregivers get one too.
+- About an hour before: the customer gets "James is coming in about an hour." and the worker gets a heads up. Caregivers don't get this one.
+
+Each reminder only goes out once. It's skipped if the worker accepted after that point, since the "James is helping you" notification already covered it.
+
+**No-shows** (type `NO_SHOW`): if a job is still `ACCEPTED` 10 minutes after its start time (the worker never tapped "I'm On My Way"), the customer gets "James hasn't started heading over yet.", their caregivers get told, the worker gets a nudge to head out or cancel, and every admin gets "Possible no-show: ...". It only happens once per job. The job's `noShowAlertedAt` gets set, so the admin dashboard can highlight it.
+
+| Endpoint | Notes |
 | --- | --- |
-| `GET /notifications` | The latest 50. Add `?unread=true` if you only want the unread ones. |
-| `POST /notifications/:id/read` | Marks one as read |
-| `POST /notifications/read-all` | Marks all of them as read |
+| `GET /notifications` | Latest 50. `?unread=true` for unread only. |
+| `POST /notifications/:id/read` | |
+| `POST /notifications/read-all` | |
 
 ### Admin
 
-`GET /admin/stats`, `GET /admin/requests`, `GET /admin/jobs`, `GET /admin/workers`, `GET /admin/customers`, and `PATCH /admin/workers/:id/verification` with `{ verificationStatus }`. Only `VERIFIED` workers get job offers, so this is how a new worker gets approved.
+`GET /admin/stats`, `/admin/requests`, `/admin/jobs`, `/admin/workers`, `/admin/customers`, and `PATCH /admin/workers/:id/verification` with `{ verificationStatus }`. Only `VERIFIED` workers get job offers.
+
+`POST /admin/demo/reset` puts everything back to the starting demo data: all requests, jobs, chats, and notifications are deleted, accounts made after seeding are removed, and the demo workers' ratings and stats go back to normal. The demo accounts keep the same ids, so nobody gets logged out. Everyone connected gets a `DEMO_RESET` event so the apps can reload. It's turned off when `NODE_ENV=production` unless `ALLOW_DEMO_RESET=true`.
 
 ## Live updates
 
-This is what makes the tracking screen feel alive instead of making people hit refresh. Browsers won't let you set headers on these kinds of connections, so pass the token in the URL. You've got two options, and they send the exact same stuff, so just pick whichever one you like more:
+Pass the token in the URL since you can't set headers on these. Use whichever one you want, they send the same thing:
 
-- **Server-Sent Events:** `new EventSource("http://localhost:4000/api/v1/events?token=" + token)`. Listen with `onmessage`, and each `event.data` is a JSON `RealtimeEvent`.
-- **WebSocket:** `new WebSocket("ws://localhost:4000/api/v1/ws?token=" + token)`. Each message is a JSON `RealtimeEvent`. If the token's bad, the socket closes with code 4401.
+- **SSE:** `new EventSource("http://localhost:4000/api/v1/events?token=" + token)`, then use `onmessage`. Each `event.data` is JSON.
+- **WebSocket:** `new WebSocket("ws://localhost:4000/api/v1/ws?token=" + token)`. Each message is JSON. Bad token closes with code 4401.
 
-The first thing you'll get either way is `{ type: "CONNECTED", userId }`. After that, every event looks like `{ type, at, data }`, and the full types are in [events.ts](../packages/contracts/src/events.ts).
+First message is `{ type: "CONNECTED", userId, replayed }`. After that every event is `{ id, type, at, data }`. Types are in [events.ts](../packages/contracts/src/events.ts).
 
-| Event | Who gets it | When |
+**Missed events.** Every event has an `id`, and the server keeps the last 1000. If a connection drops, reconnect with the last id you saw and you'll get everything you missed (in order) right after `CONNECTED`, then live events like normal:
+
+- SSE: the browser does this for you with the `Last-Event-ID` header.
+- WebSocket: add `&lastEventId=<id>` to the URL.
+
+If the gap can't be filled (the server restarted, or you were gone for a really long time), you get `{ type: "RESYNC" }` after `CONNECTED`. That means refetch whatever's on screen. The API client handles all of this, so you only need to care if you're connecting yourself.
+
+| Event | Sent to | When |
 | --- | --- | --- |
-| `REQUEST_CREATED` | customer | They confirmed a request |
-| `WORKER_MATCHED` | customer | The request went out to `notifiedWorkerCount` workers |
-| `JOB_OFFERED` | worker | There's a new job for them (`data.offer`) |
-| `JOB_ACCEPTED` | customer, worker | Someone took the job |
-| `JOB_NO_LONGER_AVAILABLE` | the other workers who got offered it | Someone else got there first, or the customer cancelled. Take it off their list. |
-| `WORKER_EN_ROUTE`, `WORKER_ARRIVED`, `JOB_STARTED`, `JOB_COMPLETED` | customer, worker | The job moved to its next step |
-| `JOB_CANCELLED` | customer, worker | Includes `cancelledBy` so you know who did it |
+| `REQUEST_CREATED` | customer | Request confirmed |
+| `WORKER_MATCHED` | customer | Request was sent to `notifiedWorkerCount` workers |
+| `JOB_OFFERED` | worker | New job for them (`data.offer`) |
+| `JOB_ACCEPTED` | customer, worker | A worker accepted |
+| `JOB_NO_LONGER_AVAILABLE` | offered workers | Someone else accepted, it got cancelled or expired, or the offer expired. Remove it from the list. |
+| `WORKER_EN_ROUTE`, `WORKER_ARRIVED`, `JOB_STARTED`, `JOB_COMPLETED` | customer, worker | Status changed |
+| `JOB_CANCELLED` | customer, worker | Includes `cancelledBy` |
 | `REQUEST_CANCELLED` | customer | |
-| `MESSAGE_RECEIVED` | both people in the chat | `data.message` |
+| `REQUEST_EXPIRED` | customer | Nobody accepted before the requested time passed |
+| `MESSAGE_RECEIVED` | both chat users | `data.message` |
 | `RATING_SUBMITTED` | worker | |
-| `NOTIFICATION` | whoever it's for | A new saved notification showed up (`data.notification`) |
+| `NOTIFICATION` | recipient | New saved notification (`data.notification`) |
+| `DEMO_RESET` | everyone | An admin reset the demo data, reload the page |
 
-Admins get every single event, which is nice for a live dashboard.
+Admins get every event.
 
-## Plugging in the AI and matching (Aditya, this part's for you)
+## AI and matching (for Aditya)
 
-The backend only talks to your services through the interfaces in [ai.ts](../packages/contracts/src/ai.ts) and [matching.ts](../packages/contracts/src/matching.ts). Neither of them needs to touch the database at all. I load everything you need, hand it to you, and save whatever you give back.
+The backend uses the interfaces in [ai.ts](../packages/contracts/src/ai.ts) and [matching.ts](../packages/contracts/src/matching.ts). Your services don't need to touch the database, the backend passes in everything and saves the results.
 
-- **`@handy/ai`** needs to export `createAIService(): AIService`. I'll call `processMessage(conversationId, message, context)`. The `context` has the conversation history, the draft so far, the customer's first name and home address, today's date and timezone, and the list of service categories. Send back an `AIResponse`. One thing to watch in `extractedData`: `undefined` means "leave this field alone," while `null` means "clear it out."
-- **`@handy/matching`** needs to export `createMatchingService(): MatchingService`. I'll call `findMatches(request, candidates)`, and the candidates will already have their qualifications, weekly schedules, booked time slots, and job experience loaded in. Send back `WorkerMatch[]` with the best match first. I send the request to the top `MATCH_INITIAL_OFFERS` workers first. If nobody accepts within `MATCH_EXPAND_AFTER_SECONDS`, I send it to everyone else who qualifies.
+- `@handy/ai` should export `createAIService()`. The backend calls `processMessage(conversationId, message, context)`, where `context` has the chat history, current draft, customer's name and home address, today's date, the categories, and `pastWorkers` (people who've helped before, so you can set `preferredWorkerId` when they ask for someone by name). Return an `AIResponse`. In `extractedData`, `undefined` means don't change the field and `null` means clear it.
+- `@handy/matching` should export `createMatchingService()`. The backend calls `findMatches(request, candidates)` with workers that already have their qualifications, schedules, bookings, experience, and `withCustomer` history loaded (workers the customer rated 1–2 stars are already removed). Return `WorkerMatch[]` sorted best first. The top `MATCH_INITIAL_OFFERS` workers get the job first. If their offers expire without anyone accepting, it goes to the next workers, and after `MATCH_EXPAND_AFTER_SECONDS` it goes to everyone else who qualifies.
 
-When yours are ready, add `"@handy/ai": "workspace:*"` and `"@handy/matching": "workspace:*"` to `apps/api/package.json` (just tell me and I'll do it), then restart. The startup log will tell you which version it's using.
+When they're ready, add `"@handy/ai": "workspace:*"` and `"@handy/matching": "workspace:*"` to `apps/api/package.json` and restart. The startup log says which one is being used.
 
-Until then, the backend has stand-ins so the rest of us aren't blocked. There's a simple rule-based assistant in `apps/api/src/integrations/fallback-ai.ts` and a matcher that uses the weights from the spec in `fallback-matching.ts`. They work well enough for the demo, but yours are going to be a lot smarter, especially the AI.
+Until then there are placeholder versions in `apps/api/src/integrations/` (`fallback-ai.ts` and `fallback-matching.ts`) so everything still works.
 
-One more thing: the backend runs its own emergency check on every message and every submitted request, completely separate from the AI. Even if the model misses something, a possible emergency still never turns into a job. I didn't want that to depend on the model getting it right every time.
+The backend also has its own emergency check on every message and request, separate from the AI.
 
-## Corners we cut (for now)
+## Known limitations
 
-It's a hackathon, so a few things are simpler than they'd be in real life:
-
-- **No real address lookup.** A request uses the customer's home coordinates for distance, even if they asked for help at a different address.
-- **Payments are fake.** The price is just the category's base price, plus $10 if it's marked urgent. The platform fee comes from `PLATFORM_FEE_CENTS`.
-- **Everything runs on one server.** Live updates and logouts are tracked in the server's memory, which is fine for one API instance. If we ever ran more than one, we'd need to move that to something like Redis.
+- Address lookup uses OpenStreetMap's free service, which only allows 1 lookup per second. That's fine for a demo but a real launch would want a paid geocoder. If a lookup fails, the job falls back to the customer's home location.
+- Payments are fake. Price is the category's base price, +$10 if urgent. Platform fee is `PLATFORM_FEE_CENTS`.
+- Live updates and logout tracking are stored in memory, so it only works with one API server running.

@@ -31,6 +31,7 @@ import type {
   WorkerPublicDTO,
 } from "@handy/contracts";
 import { approximateLocation } from "../lib/geo";
+import { SCAM_WARNINGS, type ScamSignal } from "../lib/scam";
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
@@ -157,6 +158,8 @@ export function toRequestDTO(r: ServiceRequestRow, pendingOfferCount: number, jo
     requestedEndTime: r.requestedEndTime,
     urgency: r.urgency,
     specialRequirements: r.specialRequirements,
+    preferredWorkerId: r.preferredWorkerId,
+    scheduleId: r.scheduleId,
     status: r.status,
     estimatedPriceCents: r.estimatedPriceCents,
     platformFeeCents: r.platformFeeCents,
@@ -179,6 +182,7 @@ export function toJobDTO(j: JobRow): JobDTO {
     startedAt: iso(j.startedAt),
     completedAt: iso(j.completedAt),
     cancelledAt: iso(j.cancelledAt),
+    noShowAlertedAt: iso(j.noShowAlertedAt),
     finalPriceCents: j.finalPriceCents,
     createdAt: j.createdAt.toISOString(),
     updatedAt: j.updatedAt.toISOString(),
@@ -190,6 +194,7 @@ export function toJobOfferDTO(
   r: ServiceRequestRow,
   category: ServiceCategoryRow | undefined,
   customer: UserRow,
+  ttlSeconds: number,
 ): JobOfferDTO {
   return {
     id: o.id,
@@ -210,6 +215,7 @@ export function toJobOfferDTO(
     estimatedPayCents: r.estimatedPriceCents,
     customer: toCustomerPublicDTO(customer),
     createdAt: o.createdAt.toISOString(),
+    expiresAt: new Date(o.createdAt.getTime() + ttlSeconds * 1000).toISOString(),
   };
 }
 
@@ -221,6 +227,8 @@ export function toJobMessageDTO(m: JobMessageRow, sender: UserRow | undefined): 
     senderRole: sender?.role ?? "CUSTOMER",
     senderName: sender ? `${sender.firstName} ${sender.lastName.charAt(0)}.` : "Unknown",
     content: m.content,
+    flags: m.flags,
+    warning: m.flags.length ? m.flags.map((f) => SCAM_WARNINGS[f as ScamSignal] ?? "").filter(Boolean).join(" ") : null,
     createdAt: m.createdAt.toISOString(),
   };
 }

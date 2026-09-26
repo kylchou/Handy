@@ -1,0 +1,769 @@
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { ApiRequestError, createApiClient, type ApiClient, type RealtimeEvent } from "@handy/contracts";
+import { eq } from "drizzle-orm";
+import { DEMO_PASSWORD, jobs, type DbHandle } from "@handy/db";
+import { buildApp, type App } from "../src/app";
+import { loadConfig } from "../src/config";
+import { createTestDb } from "./helpers";
+import { addDays, todayIn, zonedDateTimeToDate } from "../src/lib/time";
+
+let server: App;
+let handle: DbHandle;
+let baseUrl: string;
+
+const client = (): ApiClient => createApiClient({ baseUrl });
+
+beforeAll(async () => {
+  handle = await createTestDb();
+  server = await buildApp({
+    config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", geocoder: "off", rateLimitEnabled: false }),
+    dbHandle: handle,
+    logger: false,
+    backgroundJobs: false,
+  });
+  baseUrl = await server.app.listen({ port: 0, host: "127.0.0.1" });
+});
+
+afterAll(async () => {
+  await server.app.close();
+  await handle.close();
+});
+
+describe("API client", () => {
+  it("runs the demo flow end to end over HTTP", async () => {
+    const saved: Array<string | null> = [];
+    const margaret = createApiClient({ baseUrl, onTokenChange: (t) => saved.push(t) });
+    const james = client();
+
+    await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+    await james.auth.login({ email: "james@handy.demo", password: DEMO_PASSWORD });
+    expect(saved).toHaveLength(1);
+    expect(margaret.getToken()).toBe(saved[0]);
+    expect((await margaret.auth.me()).user.firstName).toBe("Margaret");
+
+    // Live updates for Margaret over WebSocket.
+    const events: RealtimeEvent[] = [];
+    await new Promise<void>((resolve) => {
+      const stop = margaret.realtime.subscribe((e) => events.push(e), { transport: "ws", onOpen: resolve });
+      afterAll(stop);
+    });
+
+    const { conversation } = await margaret.conversations.create();
+    await margaret.conversations.sendMessage(conversation.id, "I need someone to help me move a couch tomorrow afternoon.");
+    await margaret.conversations.sendMessage(conversation.id, "Around 3.");
+    const turn = await margaret.conversations.sendMessage(conversation.id, "Yes, at my home please.");
+    expect(turn.conversation.readyToSubmit).toBe(true);
+
+    const { request } = await margaret.requests.create({ conversationId: conversation.id });
+    expect(request.requestedDate).toBe(addDays(todayIn("America/New_York"), 1));
+
+    const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+    const job = await james.jobs.acceptOffer(offer.id);
+    expect(job.arrivalCode).toBeNull();
+    const { arrivalCode } = await margaret.jobs.get(job.id);
+    await james.jobs.updateStatus(job.id, "EN_ROUTE");
+    await james.jobs.arrive(job.id, arrivalCode!);
+    await james.jobs.updateStatus(job.id, "IN_PROGRESS");
+    await james.jobs.updateStatus(job.id, "COMPLETED");
+    const rating = await margaret.jobs.rate(job.id, { score: 5, comment: "Great" });
+    expect(rating.score).toBe(5);
+    expect((await margaret.customers.history()).find((h) => h.requestId === request.id)?.rating).toBe(5);
+
+    await new Promise((r) => setTimeout(r, 100));
+    expect(events.map((e) => e.type)).toEqual(
+      expect.arrayContaining(["REQUEST_CREATED", "JOB_ACCEPTED", "WORKER_EN_ROUTE", "WORKER_ARRIVED", "JOB_COMPLETED"]),
+    );
+  });
+
+  it("throws ApiRequestError with the server's code and message", async () => {
+    const margaret = client();
+    await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+
+    const err = await margaret.jobs.available().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiRequestError);
+    expect((err as ApiRequestError).status).toBe(403);
+    expect((err as ApiRequestError).code).toBe("FORBIDDEN");
+
+    await expect(client().auth.login({ email: "margaret@handy.demo", password: "wrong" })).rejects.toThrow(
+      "That email and password don't match our records.",
+    );
+  });
+
+  it("calls onUnauthorized and clears the token on logout", async () => {
+    const unauthorized: string[] = [];
+    const api = createApiClient({ baseUrl, onUnauthorized: (e) => unauthorized.push(e.code) });
+    await api.auth.login({ email: "james@handy.demo", password: DEMO_PASSWORD });
+    const oldToken = api.getToken();
+    await api.auth.logout();
+    expect(api.getToken()).toBeNull();
+
+    api.setToken(oldToken);
+    await expect(api.auth.me()).rejects.toMatchObject({ status: 401 });
+    expect(unauthorized).toEqual(["UNAUTHENTICATED"]);
+  });
+
+  it("reports a friendly network error when the server is unreachable", async () => {
+    const api = createApiClient({ baseUrl: "http://127.0.0.1:1" });
+    await expect(api.categories.list()).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
+  });
+
+  describe("missed live events", () => {
+    async function newRequest(api: ApiClient) {
+      const { conversation } = await api.conversations.create();
+      const { request } = await api.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "ERRANDS",
+        description: "Pick up prescriptions",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 2),
+        requestedStartTime: "12:00",
+      });
+      return request.id;
+    }
+
+    /** Opens a raw WebSocket and collects parsed messages. */
+    function openSocket(url: string) {
+      const messages: Array<{ type: string; id?: string; replayed?: number; data?: { requestId?: string } }> = [];
+      const ws = new WebSocket(url);
+      ws.onmessage = (e) => messages.push(JSON.parse(String(e.data)));
+      const opened = new Promise<void>((r) => (ws.onopen = () => r()));
+      return { ws, messages, opened };
+    }
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 50 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+    };
+
+    it("replays what a WebSocket client missed while disconnected", async () => {
+      const margaret = client();
+      await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+
+      const first = openSocket(margaret.realtime.websocketUrl());
+      await first.opened;
+      const requestId = await newRequest(margaret);
+      await until(() => first.messages.some((m) => m.type === "REQUEST_CREATED"));
+      const lastSeen = first.messages.findLast((m) => m.id)!.id!;
+      first.ws.close();
+
+      // This happens while nobody is connected.
+      await margaret.requests.cancel(requestId);
+
+      const second = openSocket(margaret.realtime.websocketUrl(lastSeen));
+      await until(() => second.messages.length >= 2);
+      second.ws.close();
+      expect(second.messages[0]).toMatchObject({ type: "CONNECTED", replayed: 1 });
+      expect(second.messages[1]).toMatchObject({ type: "REQUEST_CANCELLED", data: { requestId } });
+    });
+
+    it("replays over SSE using the Last-Event-ID header", async () => {
+      const margaret = client();
+      await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+      const before = openSocket(margaret.realtime.websocketUrl());
+      await before.opened;
+      const requestId = await newRequest(margaret);
+      await until(() => before.messages.some((m) => m.type === "REQUEST_CREATED"));
+      const lastSeen = before.messages.findLast((m) => m.id)!.id!;
+      before.ws.close();
+      await margaret.requests.cancel(requestId);
+
+      const abort = new AbortController();
+      const res = await fetch(margaret.realtime.eventsUrl(), { headers: { "Last-Event-ID": lastSeen }, signal: abort.signal });
+      const reader = res.body!.getReader();
+      let text = "";
+      while (!text.includes("REQUEST_CANCELLED")) text += new TextDecoder().decode((await reader.read()).value);
+      abort.abort();
+      expect(text).toContain('"replayed":1');
+      expect(text).toMatch(/id: \w+:\d+\ndata: \{[^\n]*"REQUEST_CANCELLED"/);
+    });
+
+    it("asks the client to resync when the gap can't be replayed", async () => {
+      const margaret = client();
+      await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+      const s = openSocket(margaret.realtime.websocketUrl("deadbeef:5"));
+      await until(() => s.messages.length >= 2);
+      s.ws.close();
+      expect(s.messages.map((m) => m.type)).toEqual(["CONNECTED", "RESYNC"]);
+    });
+
+    it("the client reconnects by itself and doesn't lose events", async () => {
+      const margaret = client();
+      await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+
+      // Wrap the global WebSocket so the test can see (and drop) the client's connections.
+      const RealWS = globalThis.WebSocket;
+      const sockets: WebSocket[] = [];
+      const urls: string[] = [];
+      globalThis.WebSocket = class extends RealWS {
+        constructor(url: string | URL) {
+          super(url);
+          urls.push(String(url));
+          sockets.push(this);
+        }
+      } as typeof WebSocket;
+
+      const events: RealtimeEvent[] = [];
+      let opens = 0;
+      const stop = margaret.realtime.subscribe((e) => events.push(e), { transport: "ws", onOpen: () => opens++ });
+      try {
+        await until(() => opens === 1);
+        const requestId = await newRequest(margaret);
+        await until(() => events.some((e) => e.type === "REQUEST_CREATED"));
+
+        sockets[0]!.close(); // connection drops
+        await margaret.requests.cancel(requestId); // happens while it's down
+
+        await until(() => events.some((e) => e.type === "REQUEST_CANCELLED"));
+        expect(opens).toBe(2);
+        expect(urls[1]).toContain("lastEventId=");
+        expect(events.filter((e) => e.type === "REQUEST_CANCELLED")).toHaveLength(1);
+      } finally {
+        stop();
+        globalThis.WebSocket = RealWS;
+      }
+    });
+  });
+
+  describe("caregivers", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const titles = async (api: ApiClient) => (await api.notifications.list()).map((n) => n.title);
+
+    it("links a family member with an invite code", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const niece = client();
+      const nora = await niece.auth.signup({ role: "CAREGIVER", firstName: "Nora", lastName: "Hayes", email: "nora@example.com", password: "longenough1" });
+      expect(await niece.caregivers.people()).toEqual([]);
+
+      const { code } = await margaret.customers.createCaregiverInvite();
+      expect(code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+      await expect(niece.caregivers.acceptInvite("ZZZZZZ")).rejects.toMatchObject({ status: 400, code: "INVALID_INVITE" });
+
+      const person = await niece.caregivers.acceptInvite(code.toLowerCase());
+      expect(person.customer.firstName).toBe("Margaret");
+      expect(await titles(margaret)).toContain("Nora can now see your Handy requests.");
+      expect((await margaret.customers.caregivers()).map((c) => c.caregiver.firstName).sort()).toEqual(["Nora", "Susan"]);
+
+      // Codes only work once.
+      const other = client();
+      await other.auth.signup({ role: "CAREGIVER", firstName: "Omar", lastName: "Ali", email: "omar@example.com", password: "longenough1" });
+      await expect(other.caregivers.acceptInvite(code)).rejects.toMatchObject({ code: "INVALID_INVITE" });
+
+      // Margaret can remove her; Nora's dashboard is empty again.
+      await margaret.customers.removeCaregiver(nora.user.id);
+      expect(await niece.caregivers.people()).toEqual([]);
+      await expect(niece.caregivers.unlink(person.customer.id)).rejects.toMatchObject({ status: 404 });
+    });
+
+    it("keeps the caregiver updated on the moments that matter", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "MOVING_ASSISTANCE",
+        description: "Move a chair",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 3),
+        requestedStartTime: "11:00",
+      });
+      const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+      const job = await james.jobs.acceptOffer(offer.id);
+      expect((await titles(susan)).some((t) => t.startsWith("James R. will help Margaret"))).toBe(true);
+
+      // The dashboard shows the job, but never the arrival code.
+      const [person] = await susan.caregivers.people();
+      const active = person!.activeJobs.find((j) => j.id === job.id)!;
+      expect(active.worker.displayName).toBe("James R.");
+      expect(active.arrivalCode).toBeNull();
+
+      await james.jobs.updateStatus(job.id, "EN_ROUTE");
+      await james.jobs.arrive(job.id, (await margaret.jobs.get(job.id)).arrivalCode!);
+      await james.jobs.updateStatus(job.id, "IN_PROGRESS");
+      await james.jobs.updateStatus(job.id, "COMPLETED");
+
+      const susanTitles = await titles(susan);
+      expect(susanTitles).toContain("James has arrived at Margaret's.");
+      expect(susanTitles).toContain("James finished helping Margaret.");
+      // Not every step, just the important ones.
+      expect(susanTitles.some((t) => t.includes("on the way"))).toBe(false);
+      expect((await susan.caregivers.people())[0]!.recentHistory.find((h) => h.requestId === request.id)?.jobStatus).toBe("COMPLETED");
+    });
+
+    it("alerts caregivers once when the customer describes an emergency", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const { conversation } = await margaret.conversations.create();
+      await margaret.conversations.sendMessage(conversation.id, "I fell and can't get up");
+      await margaret.conversations.sendMessage(conversation.id, "I fell and can't get up, please help");
+      const alerts = (await susan.notifications.list()).filter((n) => n.type === "POTENTIAL_EMERGENCY");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]!.title).toBe("Margaret may need help right now.");
+    });
+
+    it("is read-only", async () => {
+      const susan = await login("susan@handy.demo");
+      const [person] = await susan.caregivers.people();
+      const job = person!.recentHistory.find((h) => h.jobId)!;
+      await expect(susan.jobs.list()).rejects.toMatchObject({ status: 403 });
+      await expect(susan.jobs.get(job.jobId!)).rejects.toMatchObject({ status: 403 });
+      await expect(susan.requests.get(job.requestId)).rejects.toMatchObject({ status: 403 });
+      await expect(susan.conversations.create()).rejects.toMatchObject({ status: 403 });
+      await expect(susan.customers.createCaregiverInvite()).rejects.toMatchObject({ status: 403 });
+    });
+  });
+
+  describe("reminders", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const reminders = async (api: ApiClient) => (await api.notifications.list()).filter((n) => n.type === "JOB_REMINDER");
+
+    async function bookJames(margaret: ApiClient, james: ApiClient, date: string, time: string) {
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "MOVING_ASSISTANCE",
+        description: "Move a dresser",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: date,
+        requestedStartTime: time,
+      });
+      const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+      return james.jobs.acceptOffer(offer.id);
+    }
+
+    it("reminds everyone the day before and an hour before, once each", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const date = addDays(todayIn("America/New_York"), 2);
+      const job = await bookJames(margaret, james, date, "10:00");
+      const code = (await margaret.jobs.get(job.id)).arrivalCode;
+      const start = zonedDateTimeToDate(date, "10:00", "America/New_York").getTime();
+      const at = (ms: number) => server.services.jobs.sendReminders(new Date(start - ms));
+      const HOUR = 60 * 60 * 1000;
+
+      expect(await at(30 * HOUR)).toBe(0); // too early
+
+      expect(await at(23 * HOUR)).toBe(1);
+      expect((await reminders(margaret))[0]).toMatchObject({
+        title: "Reminder: James is coming tomorrow at 10 AM.",
+        body: `Moving help: Move a dresser. Your arrival code is ${code}.`,
+      });
+      expect((await reminders(james))[0]!.title).toBe("Reminder: Moving help for Margaret T. tomorrow at 10 AM.");
+      expect((await reminders(susan))[0]!.title).toBe("James is helping Margaret tomorrow at 10 AM.");
+
+      expect(await at(22 * HOUR)).toBe(0); // no repeats
+
+      expect(await at(50 * 60 * 1000)).toBe(1);
+      expect((await reminders(margaret))[0]!.title).toBe("James is coming in about an hour.");
+      expect((await reminders(james))[0]!.title).toBe("Your moving help job for Margaret T. starts in about an hour.");
+      expect(await reminders(susan)).toHaveLength(1); // caregivers only get the day-before one
+      expect(await reminders(margaret)).toHaveLength(2);
+    });
+
+    it("skips a reminder the acceptance already covered", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const date = addDays(todayIn("America/New_York"), 2);
+      const job = await bookJames(margaret, james, date, "14:00");
+      const start = zonedDateTimeToDate(date, "14:00", "America/New_York").getTime();
+
+      // Pretend James only accepted 30 minutes before the job.
+      await handle.db.update(jobs).set({ acceptedAt: new Date(start - 30 * 60 * 1000) }).where(eq(jobs.id, job.id));
+      const before = (await reminders(margaret)).length;
+      expect(await server.services.jobs.sendReminders(new Date(start - 20 * 60 * 1000))).toBe(0);
+      expect(await reminders(margaret)).toHaveLength(before);
+
+      const [row] = await handle.db.select().from(jobs).where(eq(jobs.id, job.id));
+      expect(row!.dayReminderSentAt).not.toBeNull();
+      expect(row!.hourReminderSentAt).not.toBeNull();
+    });
+  });
+
+  describe("no-shows", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const noShows = async (api: ApiClient) => (await api.notifications.list()).filter((n) => n.type === "NO_SHOW");
+
+    it("flags a worker who hasn't headed out 10 minutes after the start", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const admin = await login("admin@handy.demo");
+      const date = addDays(todayIn("America/New_York"), 2);
+
+      const book = async (time: string) => {
+        const { conversation } = await margaret.conversations.create();
+        const { request } = await margaret.requests.create({
+          conversationId: conversation.id,
+          serviceCategoryId: "MOVING_ASSISTANCE",
+          description: "Move a bookcase",
+          location: "123 Main Street, Atlanta, GA",
+          requestedDate: date,
+          requestedStartTime: time,
+        });
+        const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+        return james.jobs.acceptOffer(offer.id);
+      };
+      const late = await book("17:00");
+      const onTime = await book("19:00");
+      await james.jobs.updateStatus(onTime.id, "EN_ROUTE");
+
+      const start = (time: string) => zonedDateTimeToDate(date, time, "America/New_York").getTime();
+      const MIN = 60 * 1000;
+
+      // Still inside the grace period.
+      await server.services.jobs.checkNoShows(new Date(start("17:00") + 5 * MIN));
+      expect((await margaret.jobs.get(late.id)).noShowAlertedAt).toBeNull();
+
+      await server.services.jobs.checkNoShows(new Date(start("17:00") + 11 * MIN));
+      expect((await margaret.jobs.get(late.id)).noShowAlertedAt).not.toBeNull();
+      const forJob = (list: Awaited<ReturnType<typeof noShows>>) => list.filter((n) => n.data.jobId === late.id);
+
+      expect(forJob(await noShows(margaret))[0]!.title).toBe("James hasn't started heading over yet.");
+      expect(forJob(await noShows(susan))[0]!.title).toBe("James hasn't started heading to Margaret's yet.");
+      expect(forJob(await noShows(james))[0]!.title).toBe("Your moving help job for Margaret T. was supposed to start at 5 PM.");
+      expect(forJob(await noShows(admin))[0]!.title).toBe("Possible no-show: James Robinson for Margaret T.");
+
+      // Once only, and a worker who's already on the way is never flagged.
+      await server.services.jobs.checkNoShows(new Date(start("19:00") + 30 * MIN));
+      expect(forJob(await noShows(margaret))).toHaveLength(1);
+      expect((await margaret.jobs.get(onTime.id)).noShowAlertedAt).toBeNull();
+    });
+  });
+
+  describe("scam warnings in the job chat", () => {
+    it("flags scammy worker messages, warns the family, and blocks card numbers", async () => {
+      const login = async (email: string) => {
+        const api = client();
+        await api.auth.login({ email, password: DEMO_PASSWORD });
+        return api;
+      };
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const admin = await login("admin@handy.demo");
+      const warnings = async (api: ApiClient) => (await api.notifications.list()).filter((n) => n.type === "SCAM_WARNING");
+
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "MOVING_ASSISTANCE",
+        description: "Move a lamp",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 2),
+        requestedStartTime: "20:00",
+      });
+      const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+      const job = await james.jobs.acceptOffer(offer.id);
+
+      // Normal messages (including a Wi-Fi password question) aren't flagged.
+      for (const text of ["I'll be there in about 10 minutes.", "What's your Wi-Fi password?"]) {
+        expect(await james.jobs.sendMessage(job.id, text)).toMatchObject({ flags: [], warning: null });
+      }
+
+      const venmo = await james.jobs.sendMessage(job.id, "Can you just Venmo me instead? Saves the app fee.");
+      expect(venmo.flags).toEqual(["OFF_PLATFORM_PAYMENT"]);
+      expect(venmo.warning).toBe("Handy helpers are paid through the app. Never pay a helper another way.");
+      expect((await margaret.jobs.messages(job.id)).at(-1)!.warning).toBe(venmo.warning); // delivered, with the warning
+
+      expect((await warnings(margaret))[0]!.title).toBe("Be careful: James asked you to pay outside the app.");
+      expect((await warnings(susan))[0]!.title).toBe("James asked Margaret to pay outside the app in their job chat.");
+      expect((await warnings(admin))[0]).toMatchObject({
+        title: "Flagged chat message from James Robinson",
+        body: 'To Margaret T.: "Can you just Venmo me instead? Saves the app fee."',
+      });
+
+      // Same kind of concern again: flagged, but nobody gets notified twice.
+      expect((await james.jobs.sendMessage(job.id, "seriously just zelle me")).flags).toEqual(["OFF_PLATFORM_PAYMENT"]);
+      expect(await warnings(margaret)).toHaveLength(1);
+      // A new kind of concern does notify.
+      await james.jobs.sendMessage(job.id, "Also what's your card number?");
+      expect((await warnings(margaret))[0]!.title).toBe("Be careful: James asked you for personal or financial information.");
+
+      // Real card or SSN numbers never get sent, from either side.
+      await expect(margaret.jobs.sendMessage(job.id, "ok my card is 4111 1111 1111 1111")).rejects.toMatchObject({
+        status: 422,
+        code: "SENSITIVE_INFO",
+      });
+      expect((await margaret.jobs.messages(job.id)).some((m) => m.content.includes("4111"))).toBe(false);
+      // The customer's own messages aren't screened for keywords.
+      expect((await margaret.jobs.sendMessage(job.id, "No thanks, I'll pay in the app. My grandson uses Venmo though!")).flags).toEqual([]);
+    });
+  });
+
+  describe("booking someone again", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const offeredTo = async (api: ApiClient, requestId: string) => (await api.jobs.available()).some((o) => o.requestId === requestId);
+    const idOf = async (api: ApiClient) => (await api.auth.me()).user.id;
+
+    async function request(margaret: ApiClient, fields: { serviceCategoryId: "MOVING_ASSISTANCE" | "ERRANDS"; days: number; time: string; preferredWorkerId?: string }) {
+      const { conversation } = await margaret.conversations.create();
+      return (
+        await margaret.requests.create({
+          conversationId: conversation.id,
+          serviceCategoryId: fields.serviceCategoryId,
+          description: "Help around the house",
+          location: "123 Main Street, Atlanta, GA",
+          requestedDate: addDays(todayIn("America/New_York"), fields.days),
+          requestedStartTime: fields.time,
+          preferredWorkerId: fields.preferredWorkerId,
+        })
+      ).request;
+    }
+
+    it("lists past workers and understands 'Can Maria come back?' in the chat", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const maria = await login("maria@handy.demo");
+      const david = await login("david@handy.demo");
+      const mariaId = await idOf(maria);
+
+      const past = await margaret.customers.pastWorkers();
+      expect(past.find((p) => p.worker.firstName === "Maria")).toMatchObject({ yourLastRating: 5, lastServiceCategoryId: "ERRANDS" });
+      expect(past.some((p) => p.worker.firstName === "James")).toBe(true);
+
+      const { conversation } = await margaret.conversations.create();
+      const turn = await margaret.conversations.sendMessage(conversation.id, "Can Maria come back to pick up my groceries tomorrow at 10?");
+      expect(turn.conversation.draft).toMatchObject({ preferredWorkerId: mariaId, serviceCategoryId: "ERRANDS", requestedStartTime: "10:00" });
+      expect(turn.assistantMessage.content).toContain("I'll ask Maria first");
+      const ready = await margaret.conversations.sendMessage(conversation.id, "Yes, at my home");
+      expect(ready.assistantMessage.content).toContain("I'll ask Maria first.");
+
+      const { request: req, notifiedWorkerCount } = await margaret.requests.create({ conversationId: conversation.id });
+      expect(req.preferredWorkerId).toBe(mariaId);
+      expect(notifiedWorkerCount).toBe(1); // only Maria, at first
+      expect(await offeredTo(maria, req.id)).toBe(true);
+      expect(await offeredTo(david, req.id)).toBe(false);
+
+      // Maria can't make it, so it goes to everyone else.
+      const offer = (await maria.jobs.available()).find((o) => o.requestId === req.id)!;
+      await maria.jobs.declineOffer(offer.id);
+      expect(await offeredTo(david, req.id)).toBe(true);
+    });
+
+    it("gives the preferred worker their full window before widening the search", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const tom = await login("tom@handy.demo");
+      const req = await request(margaret, { serviceCategoryId: "MOVING_ASSISTANCE", days: 4, time: "12:00", preferredWorkerId: await idOf(james) });
+
+      expect(await offeredTo(james, req.id)).toBe(true);
+      expect(await server.services.matching.broadcast(req.id)).toBe(0); // e.g. the "widen after 2 minutes" timer
+      expect(await offeredTo(tom, req.id)).toBe(false);
+    });
+
+    it("tells the customer when the helper they asked for isn't available", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const aisha = await login("aisha@handy.demo"); // does tech help, not moving
+      const tom = await login("tom@handy.demo");
+      const req = await request(margaret, { serviceCategoryId: "MOVING_ASSISTANCE", days: 4, time: "15:00", preferredWorkerId: await idOf(aisha) });
+
+      const notes = await margaret.notifications.list();
+      expect(notes.some((n) => n.title === "Aisha isn't available then, so we're asking other helpers too.")).toBe(true);
+      expect(await offeredTo(tom, req.id)).toBe(true);
+      await expect(request(margaret, { serviceCategoryId: "ERRANDS", days: 4, time: "16:00", preferredWorkerId: await idOf(margaret) })).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("never sends someone the customer rated 1 or 2 stars", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const tom = await login("tom@handy.demo");
+      const james = await login("james@handy.demo");
+
+      const first = await request(margaret, { serviceCategoryId: "MOVING_ASSISTANCE", days: 5, time: "09:00" });
+      const offer = (await tom.jobs.available()).find((o) => o.requestId === first.id)!;
+      const job = await tom.jobs.acceptOffer(offer.id);
+      await tom.jobs.updateStatus(job.id, "EN_ROUTE");
+      await tom.jobs.arrive(job.id, (await margaret.jobs.get(job.id)).arrivalCode!);
+      await tom.jobs.updateStatus(job.id, "IN_PROGRESS");
+      await tom.jobs.updateStatus(job.id, "COMPLETED");
+      await margaret.jobs.rate(job.id, { score: 1, comment: "Broke a vase" });
+
+      const next = await request(margaret, { serviceCategoryId: "MOVING_ASSISTANCE", days: 5, time: "15:00" });
+      expect(await offeredTo(james, next.id)).toBe(true);
+      expect(await offeredTo(tom, next.id)).toBe(false);
+
+      // Even asking for him by name in the chat doesn't set him as preferred.
+      const { conversation } = await margaret.conversations.create();
+      const turn = await margaret.conversations.sendMessage(conversation.id, "Can Tom come back tomorrow?");
+      expect(turn.conversation.draft.preferredWorkerId ?? null).toBeNull();
+
+      // "Same person as last time" picks the most recent helper they didn't rate poorly (James, not Tom).
+      const again = await margaret.conversations.create();
+      const same = await margaret.conversations.sendMessage(again.conversation.id, "Can I get the same person as last time to move a chair?");
+      expect(same.conversation.draft.preferredWorkerId).toBe(await idOf(james));
+    });
+  });
+
+  describe("repeating requests", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const noonOn = (date: string) => new Date(`${date}T16:00:00Z`); // noon Eastern
+
+    it("sets up 'every Saturday' from the chat", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const { conversation } = await margaret.conversations.create();
+      const first = await margaret.conversations.sendMessage(conversation.id, "Can someone mow my lawn every Saturday morning?");
+      expect(first.conversation.draft).toMatchObject({ repeat: "WEEKLY", serviceCategoryId: "LAWN_CARE", requestedStartTime: "09:00" });
+      const ready = await margaret.conversations.sendMessage(conversation.id, "Yes, at my home");
+      expect(ready.assistantMessage.content).toContain("It'll repeat every week.");
+
+      const { request } = await margaret.requests.create({ conversationId: conversation.id });
+      expect(request.scheduleId).not.toBeNull();
+      const schedule = (await margaret.customers.schedules()).find((s) => s.id === request.scheduleId)!;
+      expect(schedule).toMatchObject({ frequency: "WEEKLY", dayOfWeek: 6, startTime: "09:00", active: true, nextDate: addDays(request.requestedDate, 7) });
+    });
+
+    it("posts each visit ahead of time and asks last week's helper first", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const maria = await login("maria@handy.demo");
+      const david = await login("david@handy.demo");
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "ERRANDS",
+        description: "Weekly grocery pickup",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 1),
+        requestedStartTime: "13:00",
+        repeat: "WEEKLY",
+      });
+
+      // Maria does the first one and gets 5 stars.
+      const offer = (await maria.jobs.available()).find((o) => o.requestId === request.id)!;
+      const job = await maria.jobs.acceptOffer(offer.id);
+      await maria.jobs.updateStatus(job.id, "EN_ROUTE");
+      await maria.jobs.arrive(job.id, (await margaret.jobs.get(job.id)).arrivalCode!);
+      await maria.jobs.updateStatus(job.id, "IN_PROGRESS");
+      await maria.jobs.updateStatus(job.id, "COMPLETED");
+      await margaret.jobs.rate(job.id, { score: 5 });
+      const schedule = (await margaret.customers.schedules()).find((s) => s.id === request.scheduleId)!;
+      expect(schedule.preferredWorkerId).toBe((await maria.auth.me()).user.id);
+
+      // Three days before next week's visit, it gets posted, to Maria first.
+      const visits = async () => (await margaret.requests.list()).filter((r) => r.scheduleId === schedule.id && r.id !== request.id);
+      await server.services.schedules.postUpcomingVisits(noonOn(addDays(schedule.nextDate, -4)));
+      expect(await visits()).toHaveLength(0); // too early
+      await server.services.schedules.postUpcomingVisits(noonOn(addDays(schedule.nextDate, -3)));
+      const [visit] = await visits();
+      expect(visit).toMatchObject({ requestedDate: schedule.nextDate, requestedStartTime: "13:00", preferredWorkerId: schedule.preferredWorkerId });
+      expect((await maria.jobs.available()).some((o) => o.requestId === visit!.id)).toBe(true);
+      expect((await david.jobs.available()).some((o) => o.requestId === visit!.id)).toBe(false);
+      expect((await margaret.notifications.list()).some((n) => n.title.startsWith("We're finding someone for your weekly errands on"))).toBe(true);
+
+      // Running again doesn't double post, and the schedule moved on a week.
+      await server.services.schedules.postUpcomingVisits(noonOn(addDays(schedule.nextDate, -3)));
+      expect(await visits()).toHaveLength(1);
+      expect((await margaret.customers.schedules()).find((s) => s.id === schedule.id)!.nextDate).toBe(addDays(schedule.nextDate, 7));
+    });
+
+    it("skips visits missed while the server was down, and stops when asked", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "ERRANDS",
+        description: "Pharmacy pickup",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 2),
+        requestedStartTime: "11:00",
+        repeat: "BIWEEKLY",
+      });
+      const visits = async () => (await margaret.requests.list()).filter((r) => r.scheduleId === request.scheduleId && r.id !== request.id);
+
+      // Two months later: it doesn't post the missed ones, just the next one coming up (if it's close).
+      const later = addDays(todayIn("America/New_York"), 60);
+      await server.services.schedules.postUpcomingVisits(noonOn(later));
+      expect((await visits()).every((v) => v.requestedDate >= later)).toBe(true);
+      expect((await visits()).length).toBeLessThanOrEqual(1);
+
+      const stopped = await margaret.customers.stopSchedule(request.scheduleId!);
+      expect(stopped.active).toBe(false);
+      const before = (await visits()).length;
+      await server.services.schedules.postUpcomingVisits(noonOn(addDays(later, 30)));
+      expect(await visits()).toHaveLength(before);
+
+      const stranger = client();
+      await stranger.auth.signup({ role: "CUSTOMER", firstName: "Sam", lastName: "Lee", email: "sam@example.com", password: "longenough1" });
+      await expect(stranger.customers.stopSchedule(request.scheduleId!)).rejects.toMatchObject({ status: 403 });
+    });
+  });
+
+  it("resets the demo data without logging anyone out", async () => {
+    const admin = client();
+    const margaret = client();
+    const james = client();
+    await admin.auth.login({ email: "admin@handy.demo", password: DEMO_PASSWORD });
+    await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+    await james.auth.login({ email: "james@handy.demo", password: DEMO_PASSWORD });
+    const newbie = client();
+    await newbie.auth.signup({ role: "CUSTOMER", firstName: "Temp", lastName: "User", email: "temp@example.com", password: "longenough1" });
+
+    // The demo flow above changed James's stats and Margaret's history.
+    expect((await james.workers.getProfile()).completedJobs).toBeGreaterThan(87);
+    expect((await margaret.customers.history()).length).toBeGreaterThan(1);
+    await expect(james.admin.resetDemo()).rejects.toMatchObject({ status: 403 });
+
+    const events: RealtimeEvent[] = [];
+    await new Promise<void>((resolve) => {
+      const stop = margaret.realtime.subscribe((e) => events.push(e), { transport: "ws", onOpen: resolve });
+      afterAll(stop);
+    });
+    expect(await admin.admin.resetDemo()).toEqual({ ok: true });
+    await new Promise((r) => setTimeout(r, 100));
+    expect(events.some((e) => e.type === "DEMO_RESET")).toBe(true);
+
+    // Same sessions still work, and everything is back to the seeded state.
+    const profile = await james.workers.getProfile();
+    expect(profile).toMatchObject({ completedJobs: 87, rating: 4.9, ratingCount: 80 });
+    expect(profile.qualifications.map((q) => q.serviceCategoryId).sort()).toEqual(["HOME_MAINTENANCE", "MOVING_ASSISTANCE"]);
+    const history = await margaret.customers.history();
+    expect(history).toHaveLength(1);
+    expect(history[0]!.worker?.displayName).toBe("Maria L.");
+    expect(await margaret.notifications.list()).toHaveLength(0);
+    expect(await james.jobs.available()).toHaveLength(0);
+    await expect(client().auth.login({ email: "temp@example.com", password: "longenough1" })).rejects.toMatchObject({ status: 401 });
+    expect((await admin.admin.stats()).activeRequests).toBe(0);
+    const susan = client();
+    await susan.auth.login({ email: "susan@handy.demo", password: DEMO_PASSWORD });
+    expect((await susan.caregivers.people()).map((p) => p.customer.firstName)).toEqual(["Margaret"]);
+  });
+
+  it("refuses to reset when demo reset is turned off", async () => {
+    const locked = await buildApp({
+      config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", geocoder: "off", rateLimitEnabled: false, allowDemoReset: false }),
+      dbHandle: handle,
+      logger: false,
+      backgroundJobs: false,
+    });
+    const url = await locked.app.listen({ port: 0, host: "127.0.0.1" });
+    const admin = createApiClient({ baseUrl: url });
+    await admin.auth.login({ email: "admin@handy.demo", password: DEMO_PASSWORD });
+    await expect(admin.admin.resetDemo()).rejects.toMatchObject({ status: 403 });
+    await locked.app.close();
+  });
+
+  it("passes query params through", async () => {
+    const admin = client();
+    await admin.auth.login({ email: "admin@handy.demo", password: DEMO_PASSWORD });
+    const completed = await admin.admin.jobs("COMPLETED");
+    expect(completed.length).toBeGreaterThanOrEqual(1);
+    expect(completed.every((j) => j.status === "COMPLETED")).toBe(true);
+  });
+});

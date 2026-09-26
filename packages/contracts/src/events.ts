@@ -9,6 +9,8 @@ import type { JobMessageDTO, JobOfferDTO, NotificationDTO } from "./dto";
 export const RealtimeEventType = {
   REQUEST_CREATED: "REQUEST_CREATED",
   REQUEST_CANCELLED: "REQUEST_CANCELLED",
+  /** Sent to the customer: nobody accepted before the requested time passed. */
+  REQUEST_EXPIRED: "REQUEST_EXPIRED",
   /** Sent to a worker: a new job is available to them. */
   JOB_OFFERED: "JOB_OFFERED",
   /** Sent to the customer: matching found workers and notified them. */
@@ -24,10 +26,17 @@ export const RealtimeEventType = {
   MESSAGE_RECEIVED: "MESSAGE_RECEIVED",
   RATING_SUBMITTED: "RATING_SUBMITTED",
   NOTIFICATION: "NOTIFICATION",
+  /** Sent to everyone: an admin reset the demo data, so reload whatever is on screen. */
+  DEMO_RESET: "DEMO_RESET",
 } as const;
 export type RealtimeEventType = (typeof RealtimeEventType)[keyof typeof RealtimeEventType];
 
 interface EventBase<T extends RealtimeEventType, D> {
+  /**
+   * Unique per event. Reconnect with the last id you saw (SSE does this for
+   * you via Last-Event-ID; for WebSocket pass ?lastEventId=) to get what you missed.
+   */
+  id: string;
   type: T;
   /** ISO timestamp. */
   at: string;
@@ -40,6 +49,7 @@ type JobRef = { jobId: string; requestId: string; status: JobStatus };
 export type RealtimeEvent =
   | EventBase<"REQUEST_CREATED", RequestRef>
   | EventBase<"REQUEST_CANCELLED", RequestRef>
+  | EventBase<"REQUEST_EXPIRED", RequestRef>
   | EventBase<"JOB_OFFERED", { offer: JobOfferDTO }>
   | EventBase<"WORKER_MATCHED", RequestRef & { notifiedWorkerCount: number }>
   | EventBase<"JOB_ACCEPTED", JobRef & { workerId: string }>
@@ -51,10 +61,27 @@ export type RealtimeEvent =
   | EventBase<"JOB_CANCELLED", JobRef & { cancelledBy: "CUSTOMER" | "WORKER" | "ADMIN" }>
   | EventBase<"MESSAGE_RECEIVED", { jobId: string; message: JobMessageDTO }>
   | EventBase<"RATING_SUBMITTED", { jobId: string; workerId: string; score: number }>
-  | EventBase<"NOTIFICATION", { notification: NotificationDTO }>;
+  | EventBase<"NOTIFICATION", { notification: NotificationDTO }>
+  | EventBase<"DEMO_RESET", Record<string, never>>;
 
 /** Sent once when a realtime connection opens. */
 export interface RealtimeHello {
   type: "CONNECTED";
   userId: string;
+  /** How many missed events are being re-sent right after this message. */
+  replayed: number;
 }
+
+/**
+ * Sent after CONNECTED when missed events can't be replayed (too many, or the
+ * server restarted). Refetch whatever is on screen.
+ */
+export interface RealtimeResync {
+  type: "RESYNC";
+}
+
+/** Any message a realtime connection can receive. */
+export type RealtimeMessage = RealtimeEvent | RealtimeHello | RealtimeResync;
+
+/** A RealtimeEvent before the server assigns its id. */
+export type NewRealtimeEvent = RealtimeEvent extends infer E ? (E extends RealtimeEvent ? Omit<E, "id"> : never) : never;

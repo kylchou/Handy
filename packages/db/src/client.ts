@@ -5,7 +5,7 @@ import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
 import * as schema from "./schema";
 
 export type Schema = typeof schema;
-/** A database handle or an open transaction — repositories accept either. */
+/** A database handle or an open transaction. Repositories take either one. */
 export type Database = PgDatabase<PgQueryResultHKT, Schema>;
 
 export interface DbHandle {
@@ -30,9 +30,9 @@ export function findRepoRoot(start = process.cwd()): string {
 
 /**
  * Opens a database from a URL:
- * - `postgres://…` / `postgresql://…` — a real PostgreSQL server (node-postgres pool).
- * - `pglite://memory` — in-memory embedded Postgres (tests).
- * - `pglite://<path>` — embedded Postgres persisted at <path>, relative to the repo root.
+ * - `postgres://...` or `postgresql://...`: a real Postgres server
+ * - `pglite://memory`: in-memory Postgres, used by the tests
+ * - `pglite://<path>`: embedded Postgres saved at <path> (relative to the repo root)
  */
 export async function createDb(url: string): Promise<DbHandle> {
   if (url.startsWith("pglite://")) {
@@ -71,5 +71,5 @@ export async function createDb(url: string): Promise<DbHandle> {
     };
   }
 
-  throw new Error(`Unsupported DATABASE_URL "${url}". Use postgres://… or pglite://<path>.`);
+  throw new Error(`Unsupported DATABASE_URL "${url}". Use postgres://... or pglite://<path>.`);
 }

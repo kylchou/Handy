@@ -9,9 +9,10 @@ import type {
   RealtimeEvent,
   SendConversationMessageResponse,
 } from "@handy/contracts";
-import { createDb, DEMO_PASSWORD, seed, type DbHandle } from "@handy/db";
+import { DEMO_PASSWORD, type DbHandle } from "@handy/db";
 import { buildApp, type App } from "../src/app";
 import { loadConfig } from "../src/config";
+import { createTestDb } from "./helpers";
 import { addDays, todayIn } from "../src/lib/time";
 
 let ctx: App;
@@ -36,11 +37,9 @@ async function chat(who: string, conversationId: string, content: string) {
 }
 
 beforeAll(async () => {
-  handle = await createDb("pglite://memory");
-  await handle.migrate();
-  await seed(handle.db, () => {});
+  handle = await createTestDb();
   ctx = await buildApp({
-    config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "" }),
+    config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "", geocoder: "off", rateLimitEnabled: false }),
     dbHandle: handle,
     logger: false,
     backgroundJobs: false,
@@ -188,8 +187,25 @@ describe("end-to-end demo flow", () => {
     expect(msgs.body.map((m) => m.senderName)).toEqual(["Margaret T.", "James R."]);
     expect((await call("GET", `/jobs/${jobId}/messages`, "tom")).status).toBe(403);
 
-    for (const status of ["EN_ROUTE", "ARRIVED", "IN_PROGRESS", "COMPLETED"]) {
-      const res = await call<JobDetailDTO>("PATCH", `/jobs/${jobId}/status`, "james", { status });
+    // Only Margaret can see the arrival code.
+    const code = (await call<JobDetailDTO>("GET", `/jobs/${jobId}`, "margaret")).body.arrivalCode!;
+    expect(code).toMatch(/^\d{4}$/);
+    expect((await call<JobDetailDTO>("GET", `/jobs/${jobId}`, "james")).body.arrivalCode).toBeNull();
+    expect((await call<JobDetailDTO[]>("GET", "/jobs", "james")).body.every((j) => j.arrivalCode === null)).toBe(true);
+    expect((await call<JobDetailDTO>("GET", `/jobs/${jobId}`, "admin")).body.arrivalCode).toBe(code);
+    const notes = await call<Array<{ body: string | null }>>("GET", "/notifications", "margaret");
+    expect(notes.body.some((n) => n.body?.includes(`Your arrival code is ${code}`))).toBe(true);
+
+    expect((await call("PATCH", `/jobs/${jobId}/status`, "james", { status: "EN_ROUTE" })).status).toBe(200);
+    const noCode = await call<{ error: { code: string } }>("PATCH", `/jobs/${jobId}/status`, "james", { status: "ARRIVED" });
+    expect(noCode.body.error.code).toBe("INVALID_ARRIVAL_CODE");
+    const wrong = code === "0000" ? "1111" : "0000";
+    const bad = await call<{ error: { code: string } }>("PATCH", `/jobs/${jobId}/status`, "james", { status: "ARRIVED", arrivalCode: wrong });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.code).toBe("INVALID_ARRIVAL_CODE");
+
+    for (const [status, extra] of [["ARRIVED", { arrivalCode: code }], ["IN_PROGRESS", {}], ["COMPLETED", {}]] as const) {
+      const res = await call<JobDetailDTO>("PATCH", `/jobs/${jobId}/status`, "james", { status, ...extra });
       expect(res.status).toBe(200);
       expect(res.body.status).toBe(status);
     }
@@ -289,6 +305,128 @@ describe("safety and re-matching", () => {
     expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "tom")).body.some((o) => o.requestId === requestId)).toBe(false);
   });
 
+  it("stops a worker from double-booking themselves", async () => {
+    const day = addDays(todayIn("America/New_York"), 4);
+    const submit = async (description: string) => {
+      const conv = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+      const r = await call<CreateServiceRequestResponse>("POST", "/requests", "margaret", {
+        conversationId: conv.id,
+        serviceCategoryId: "MOVING_ASSISTANCE",
+        description,
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: day,
+        requestedStartTime: "14:00",
+      });
+      return r.body.request.id;
+    };
+    const first = await submit("Move a dresser");
+    const second = await submit("Move a bookshelf");
+    const jamesOffers = (await call<JobOfferDTO[]>("GET", "/jobs/available", "james")).body;
+    const offerFor = (id: string) => jamesOffers.find((o) => o.requestId === id)!;
+    expect(offerFor(first)).toBeDefined();
+    expect(offerFor(second)).toBeDefined();
+
+    expect((await call("POST", `/jobs/offers/${offerFor(first).id}/accept`, "james")).status).toBe(200);
+
+    // His overlapping offer is pulled, and Tom is still offered the second job.
+    expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.some((o) => o.requestId === second)).toBe(false);
+    expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "tom")).body.some((o) => o.requestId === second)).toBe(true);
+    const late = await call<{ error: { code: string } }>("POST", `/jobs/offers/${offerFor(second).id}/accept`, "james");
+    expect(late.status).toBe(409);
+
+    // Even if an overlapping offer slips through (e.g. two taps at once), the accept is refused.
+    const { offersRepo } = await import("../src/repositories/offers");
+    const third = await submit("Move a mattress");
+    const [sneaky] = await offersRepo.createMany(handle.db, [{ requestId: third, workerId: ids.james!, score: 50 }]);
+    const conflict = await call<{ error: { code: string } }>("POST", `/jobs/offers/${sneaky!.id}/accept`, "james");
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.error.code).toBe("SCHEDULE_CONFLICT");
+  });
+
+  it("locks arriving after too many wrong arrival codes", async () => {
+    const conv = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    const submitted = await call<CreateServiceRequestResponse>("POST", "/requests", "margaret", {
+      conversationId: conv.id,
+      serviceCategoryId: "ERRANDS",
+      description: "Return a package",
+      location: "123 Main Street, Atlanta, GA",
+      requestedDate: addDays(todayIn("America/New_York"), 1),
+      requestedStartTime: "09:00",
+    });
+    const requestId = submitted.body.request.id;
+    const offer = (await call<JobOfferDTO[]>("GET", "/jobs/available", "maria")).body.find((o) => o.requestId === requestId)!;
+    const job = (await call<JobDetailDTO>("POST", `/jobs/offers/${offer.id}/accept`, "maria")).body;
+    const code = (await call<JobDetailDTO>("GET", `/jobs/${job.id}`, "margaret")).body.arrivalCode!;
+    const wrong = code === "0000" ? "1111" : "0000";
+    await call("PATCH", `/jobs/${job.id}/status`, "maria", { status: "EN_ROUTE" });
+
+    const codes: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      codes.push((await call<{ error: { code: string } }>("PATCH", `/jobs/${job.id}/status`, "maria", { status: "ARRIVED", arrivalCode: wrong })).body.error.code);
+    }
+    expect(codes).toEqual(["INVALID_ARRIVAL_CODE", "INVALID_ARRIVAL_CODE", "INVALID_ARRIVAL_CODE", "INVALID_ARRIVAL_CODE", "TOO_MANY_ATTEMPTS"]);
+
+    // Even the right code is refused now, but an admin can still mark it arrived.
+    const locked = await call("PATCH", `/jobs/${job.id}/status`, "maria", { status: "ARRIVED", arrivalCode: code });
+    expect(locked.status).toBe(429);
+    const byAdmin = await call<JobDetailDTO>("PATCH", `/jobs/${job.id}/status`, "admin", { status: "ARRIVED" });
+    expect(byAdmin.body.status).toBe("ARRIVED");
+  });
+
+  it("expires offers nobody answers and passes the job to the next worker", async () => {
+    // A second app on the same database that only offers each request to one worker at a time.
+    const oneAtATime = await buildApp({
+      config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "", geocoder: "off", rateLimitEnabled: false, matchInitialOffers: 1 }),
+      dbHandle: handle,
+      logger: false,
+      backgroundJobs: false,
+    });
+    const call2 = async <T,>(method: string, url: string, who: string, body?: unknown) => {
+      const res = await oneAtATime.app.inject({
+        method: method as "GET",
+        url: `/api/v1${url}`,
+        headers: { authorization: `Bearer ${tokens[who]}` },
+        ...(body !== undefined && { payload: body as object }),
+      });
+      return { status: res.statusCode, body: res.json() as T };
+    };
+
+    const conv = (await call2<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    const submitted = await call2<CreateServiceRequestResponse>("POST", "/requests", "margaret", {
+      conversationId: conv.id,
+      serviceCategoryId: "MOVING_ASSISTANCE",
+      description: "Move a table",
+      location: "123 Main Street, Atlanta, GA",
+      requestedDate: addDays(todayIn("America/New_York"), 5),
+      requestedStartTime: "10:00",
+    });
+    const requestId = submitted.body.request.id;
+    expect(submitted.body.notifiedWorkerCount).toBe(1);
+
+    const jamesOffer = (await call2<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.find((o) => o.requestId === requestId)!;
+    expect(Date.parse(jamesOffer.expiresAt) - Date.parse(jamesOffer.createdAt)).toBe(300_000);
+    expect((await call2<JobOfferDTO[]>("GET", "/jobs/available", "tom")).body.some((o) => o.requestId === requestId)).toBe(false);
+
+    // Jump past the 5 minute window.
+    const events: RealtimeEvent[] = [];
+    const unsubscribe = oneAtATime.bus.subscribe(ids.james!, (e) => events.push(e));
+    const expired = await oneAtATime.services.matching.expireOffers(new Date(Date.now() + 301_000));
+    unsubscribe();
+    expect(expired).toBeGreaterThanOrEqual(1);
+    expect(events.some((e) => e.type === "JOB_NO_LONGER_AVAILABLE" && e.data.requestId === requestId)).toBe(true);
+
+    expect((await call2<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.some((o) => o.requestId === requestId)).toBe(false);
+    const tooLate = await call2<{ error: { code: string } }>("POST", `/jobs/offers/${jamesOffer.id}/accept`, "james");
+    expect(tooLate.body.error.code).toBe("JOB_NO_LONGER_AVAILABLE");
+
+    // Tom is next in line and can take it.
+    const tomOffer = (await call2<JobOfferDTO[]>("GET", "/jobs/available", "tom")).body.find((o) => o.requestId === requestId)!;
+    expect(tomOffer).toBeDefined();
+    expect((await call2("POST", `/jobs/offers/${tomOffer.id}/accept`, "tom")).status).toBe(200);
+
+    await oneAtATime.app.close();
+  });
+
   it("does not offer jobs to unverified workers until an admin verifies them", async () => {
     const workers = await call<Array<{ id: string; firstName: string }>>("GET", "/admin/workers", "admin");
     const linda = workers.body.find((w) => w.firstName === "Linda")!;
@@ -359,5 +497,56 @@ describe("realtime transport", () => {
     ws.close();
     expect(received[0]!.type).toBe("CONNECTED");
     expect(received[1]!.type).toBe("REQUEST_CREATED");
+  });
+});
+
+// Runs last: it jumps ahead in time, which expires every request still searching.
+describe("request expiry", () => {
+  it("closes requests nobody accepted before their time passed", async () => {
+    const conv = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    const date = addDays(todayIn("America/New_York"), 6);
+    const submitted = await call<CreateServiceRequestResponse>("POST", "/requests", "margaret", {
+      conversationId: conv.id,
+      serviceCategoryId: "MOVING_ASSISTANCE",
+      description: "Move a rug",
+      location: "123 Main Street, Atlanta, GA",
+      requestedDate: date,
+      requestedStartTime: "10:00",
+    });
+    const requestId = submitted.body.request.id;
+    expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.some((o) => o.requestId === requestId)).toBe(true);
+
+    // The day before, this request is left alone (earlier requests from other tests do expire).
+    await ctx.services.requests.expirePastRequests(new Date(`${addDays(date, -1)}T16:00:00Z`));
+    expect((await call<{ status: string }>("GET", `/requests/${requestId}`, "margaret")).body.status).toBe("SEARCHING");
+
+    const events: RealtimeEvent[] = [];
+    const unsubscribe = ctx.bus.subscribe(ids.margaret!, (e) => events.push(e));
+    // 11:30 AM Eastern on the requested day, after the 10-11 window.
+    expect(await ctx.services.requests.expirePastRequests(new Date(`${date}T15:30:00Z`))).toBeGreaterThanOrEqual(1);
+    unsubscribe();
+
+    const req = await call<{ status: string; pendingOfferCount: number }>("GET", `/requests/${requestId}`, "margaret");
+    expect(req.body.status).toBe("EXPIRED");
+    expect(req.body.pendingOfferCount).toBe(0);
+    expect(events.some((e) => e.type === "REQUEST_EXPIRED" && e.data.requestId === requestId)).toBe(true);
+    expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.some((o) => o.requestId === requestId)).toBe(false);
+
+    const notes = await call<Array<{ title: string }>>("GET", "/notifications", "margaret");
+    expect(notes.body[0]!.title).toMatch(/^We couldn't find anyone for your moving help on/);
+    expect((await call("POST", `/requests/${requestId}/cancel`, "margaret")).status).toBe(409);
+  });
+
+  it("rejects dates that already passed", async () => {
+    const conv = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    const res = await call<{ error: { code: string } }>("POST", "/requests", "margaret", {
+      conversationId: conv.id,
+      serviceCategoryId: "ERRANDS",
+      description: "Pick up mail",
+      location: "123 Main Street, Atlanta, GA",
+      requestedDate: addDays(todayIn("America/New_York"), -1),
+      requestedStartTime: "10:00",
+    });
+    expect(res.status).toBe(400);
   });
 });

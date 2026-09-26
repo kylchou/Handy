@@ -6,23 +6,25 @@ import type {
   ServiceRequestStatus,
 } from "@handy/contracts";
 import { REQUIRED_REQUEST_FIELDS } from "@handy/contracts";
-import type { ServiceRequestRow } from "@handy/db";
+import type { CustomerProfileRow, ServiceRequestRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
+import { sameAddress } from "../lib/geo";
 import { EMERGENCY_GUIDANCE, detectEmergency } from "../lib/safety";
-import { addMinutes, todayIn } from "../lib/time";
+import { estimatePriceCents } from "../lib/pricing";
+import { addDays, addMinutes, dayOfWeek, friendlyDate, nowTimeIn, repeatDays, todayIn } from "../lib/time";
+import { schedulesRepo } from "../repositories/schedules";
 import { categoriesRepo } from "../repositories/categories";
 import { conversationsRepo } from "../repositories/conversations";
 import { jobsRepo } from "../repositories/jobs";
 import { offersRepo } from "../repositories/offers";
 import { requestsRepo } from "../repositories/requests";
-import { customerProfilesRepo } from "../repositories/users";
+import { customerProfilesRepo, usersRepo } from "../repositories/users";
 import { Notifier, type Actor, type ServiceContext } from "./context";
 import type { ConversationService } from "./conversation-service";
 import { mergeDraft } from "./conversation-service";
 import type { MatchingOrchestrator } from "./matching-orchestrator";
 import { requestView, requestViews } from "./views";
 
-const HIGH_URGENCY_SURCHARGE_CENTS = 1000;
 
 export class RequestService {
   private notifier: Notifier;
@@ -56,11 +58,15 @@ export class RequestService {
     if (missing.length) {
       throw new ApiError("REQUEST_INCOMPLETE", "I still need a little more information before I can send this.", { missingInformation: missing });
     }
-    if (draft.requestedDate! < todayIn(config.timezone)) {
+    const today = todayIn(config.timezone);
+    if (draft.requestedDate! < today) {
       throw new ApiError("VALIDATION_FAILED", "That date has already passed. Please choose today or a later day.");
     }
     if (draft.requestedEndTime! <= draft.requestedStartTime!) {
       throw new ApiError("VALIDATION_FAILED", "The end time needs to be after the start time.");
+    }
+    if (draft.requestedDate === today && draft.requestedEndTime! <= nowTimeIn(config.timezone)) {
+      throw new ApiError("VALIDATION_FAILED", "That time has already passed today. Please choose a later time.");
     }
 
     const [category, profile] = await Promise.all([
@@ -68,24 +74,49 @@ export class RequestService {
       customerProfilesRepo.get(db, actor.id),
     ]);
     if (!category) throw new ApiError("VALIDATION_FAILED", "Unknown service type.");
+    if (draft.preferredWorkerId) {
+      const preferred = await usersRepo.findById(db, draft.preferredWorkerId);
+      if (preferred?.role !== "WORKER") throw new ApiError("VALIDATION_FAILED", "We couldn't find that helper.");
+    }
 
-    // No geocoder yet: the customer's home coordinates stand in for the job site.
+    const coords = await this.jobSiteCoordinates(draft.location!, profile);
     const request = await db.transaction(async (tx) => {
+      // A repeating request gets a schedule, and this first visit is linked to it.
+      const schedule = draft.repeat
+        ? await schedulesRepo.create(tx, {
+            customerId: actor.id,
+            frequency: draft.repeat,
+            serviceCategoryId: category.id,
+            description: draft.description!,
+            location: draft.location!,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            dayOfWeek: dayOfWeek(draft.requestedDate!),
+            startTime: draft.requestedStartTime!,
+            endTime: draft.requestedEndTime!,
+            urgency: draft.urgency ?? "NORMAL",
+            specialRequirements: draft.specialRequirements ?? [],
+            preferredWorkerId: draft.preferredWorkerId ?? null,
+            nextDate: addDays(draft.requestedDate!, repeatDays(draft.repeat)),
+          })
+        : null;
       const created = await requestsRepo.create(tx, {
         customerId: actor.id,
         conversationId: conv.id,
         serviceCategoryId: category.id,
         description: draft.description!,
         location: draft.location!,
-        latitude: profile?.latitude ?? null,
-        longitude: profile?.longitude ?? null,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
         requestedDate: draft.requestedDate!,
         requestedStartTime: draft.requestedStartTime!,
         requestedEndTime: draft.requestedEndTime!,
         urgency: draft.urgency ?? "NORMAL",
         specialRequirements: draft.specialRequirements ?? [],
+        preferredWorkerId: draft.preferredWorkerId ?? null,
+        scheduleId: schedule?.id ?? null,
         status: "SEARCHING",
-        estimatedPriceCents: category.basePriceCents + (draft.urgency === "HIGH" ? HIGH_URGENCY_SURCHARGE_CENTS : 0),
+        estimatedPriceCents: estimatePriceCents(category.basePriceCents, draft.urgency),
         platformFeeCents: config.platformFeeCents,
       });
       await conversationsRepo.update(tx, conv.id, { status: "SUBMITTED", draft, readyToSubmit: true, missingInformation: [] });
@@ -101,6 +132,18 @@ export class RequestService {
     const notifiedWorkerCount = await this.matching.broadcast(request.id);
     const fresh = (await requestsRepo.get(db, request.id))!;
     return { request: await requestView(this.ctx, fresh), notifiedWorkerCount };
+  }
+
+  /**
+   * Where the job actually is. At home we already know the coordinates; anywhere
+   * else gets looked up. If the lookup fails we fall back to home, which is
+   * close enough for matching.
+   */
+  private async jobSiteCoordinates(location: string, profile: CustomerProfileRow | null) {
+    const home = { latitude: profile?.latitude ?? null, longitude: profile?.longitude ?? null };
+    if (sameAddress(location, profile?.address)) return home;
+    const found = await this.ctx.geocoder.geocode(location);
+    return found ?? home;
   }
 
   async list(actor: Actor, status?: ServiceRequestStatus): Promise<ServiceRequestDTO[]> {
@@ -133,6 +176,44 @@ export class RequestService {
     for (const o of withdrawn) this.notifier.emit([o.workerId], "JOB_NO_LONGER_AVAILABLE", { requestId, offerId: o.id });
     this.notifier.emit([request.customerId], "REQUEST_CANCELLED", { requestId, status: request.status });
     return requestView(this.ctx, request);
+  }
+
+  /**
+   * Closes requests nobody accepted before their time window ended, pulls the
+   * open offers, and lets the customer know. Called on an interval.
+   */
+  async expirePastRequests(now = new Date()): Promise<number> {
+    const { db, config } = this.ctx;
+    const due = await requestsRepo.searchingPastWindow(db, todayIn(config.timezone, now), nowTimeIn(config.timezone, now));
+    if (due.length === 0) return 0;
+    const categoryName = new Map((await categoriesRepo.list(db)).map((c) => [c.id, c.name.toLowerCase()]));
+    let count = 0;
+    for (const r of due) {
+      const result = await db.transaction(async (tx) => {
+        const locked = await requestsRepo.getForUpdate(tx, r.id);
+        if (!locked || locked.status !== "SEARCHING") return null; // someone accepted or cancelled in the meantime
+        const request = await requestsRepo.update(tx, r.id, { status: "EXPIRED" });
+        const withdrawn = await offersRepo.withdrawPending(tx, r.id);
+        return { request, withdrawn };
+      });
+      if (!result) continue;
+      count++;
+      for (const o of result.withdrawn) this.notifier.emit([o.workerId], "JOB_NO_LONGER_AVAILABLE", { requestId: r.id, offerId: o.id });
+      this.notifier.emit([r.customerId], "REQUEST_EXPIRED", { requestId: r.id, status: result.request.status });
+      await this.notifier.notifyCustomer(
+        r.customerId,
+        "REQUEST_EXPIRED",
+        `We couldn't find anyone for your ${categoryName.get(r.serviceCategoryId) ?? "request"} on ${friendlyDate(r.requestedDate)}.`,
+        "Would you like to pick another time? Just start a new request and we'll look again.",
+        { requestId: r.id },
+        (who) => ({
+          title: `We couldn't find anyone for ${who}'s ${categoryName.get(r.serviceCategoryId) ?? "request"} on ${friendlyDate(r.requestedDate)}.`,
+          body: "You might want to check in with them about picking another time.",
+        }),
+      );
+    }
+    if (count) this.ctx.log.info({ expired: count }, "expired requests nobody accepted in time");
+    return count;
   }
 
   async matches(actor: Actor, requestId: string): Promise<RequestMatchesResponse> {

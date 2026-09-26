@@ -8,6 +8,55 @@
       "when": 1790387349372,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790394930904,
+      "tag": "0001_arrival_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790395491253,
+      "tag": "0002_caregivers",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790397895099,
+      "tag": "0003_job_reminders",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790401997214,
+      "tag": "0004_no_show_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790402531232,
+      "tag": "0005_chat_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790403195348,
+      "tag": "0006_preferred_worker",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790404323789,
+      "tag": "0007_recurring_requests",
+      "breakpoints": true
     }
   ]
 }

@@ -78,7 +78,7 @@ export interface WorkerQualificationDTO {
   qualificationLevel: QualificationLevel;
 }
 
-/** Full worker profile — only returned to the worker themself and admins. */
+/** Full worker profile. Only sent to the worker themself and admins. */
 export interface WorkerProfileDTO {
   userId: string;
   bio: string | null;
@@ -145,6 +145,32 @@ export interface ServiceRequestDraft {
   requestedEndTime?: string | null;
   urgency?: Urgency | null;
   specialRequirements?: string[] | null;
+  /** A worker the customer wants again ("Can James come back?"). They're asked first. */
+  preferredWorkerId?: string | null;
+  /** Set when they ask for it to happen regularly ("every Saturday"). */
+  repeat?: RepeatFrequency | null;
+}
+
+export type RepeatFrequency = "WEEKLY" | "BIWEEKLY";
+
+/** A request that repeats. Each visit becomes its own ServiceRequest a few days ahead. */
+export interface RecurringScheduleDTO {
+  id: string;
+  customerId: string;
+  frequency: RepeatFrequency;
+  serviceCategoryId: ServiceCategoryCode;
+  description: string;
+  location: string;
+  /** 0 = Sunday. */
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  /** Whoever did the last visit and got a good rating is asked first next time. */
+  preferredWorkerId: string | null;
+  /** Date of the next visit that hasn't been created yet. */
+  nextDate: string;
+  active: boolean;
+  createdAt: string;
 }
 
 export interface ConversationDTO {
@@ -175,6 +201,10 @@ export interface ServiceRequestDTO {
   requestedEndTime: string;
   urgency: Urgency;
   specialRequirements: string[];
+  /** Offered to this worker alone first; if they pass, it goes to everyone. */
+  preferredWorkerId: string | null;
+  /** Set when this visit came from a repeating request. */
+  scheduleId: string | null;
   status: ServiceRequestStatus;
   estimatedPriceCents: number;
   platformFeeCents: number;
@@ -197,6 +227,8 @@ export interface JobDTO {
   startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
+  /** Set when the worker hadn't headed out 10 minutes after the start time. Admins should follow up. */
+  noShowAlertedAt: string | null;
   finalPriceCents: number | null;
   createdAt: string;
   updatedAt: string;
@@ -210,9 +242,15 @@ export interface JobDetailDTO extends JobDTO {
   request: ServiceRequestDTO;
   worker: WorkerPublicDTO;
   customer: CustomerPublicDTO;
-  /** Worker → customer distance in miles, when coordinates are known. */
+  /** Distance from the worker to the customer in miles, when coordinates are known. */
   distanceMiles: number | null;
   rating: RatingDTO | null;
+  /**
+   * 4-digit code the customer reads to the worker at the door. The worker has
+   * to enter it to mark the job ARRIVED. Only sent to the customer and admins;
+   * always null for the worker.
+   */
+  arrivalCode: string | null;
 }
 
 /** An open job shown on a worker's "Available Jobs Near You" list. */
@@ -226,7 +264,7 @@ export interface JobOfferDTO {
   serviceCategoryId: ServiceCategoryCode;
   serviceName: string;
   description: string;
-  /** Approximate area only until accepted — the street address is withheld. */
+  /** Just the general area until they accept, not the street address. */
   approximateLocation: string;
   requestedDate: string;
   requestedStartTime: string;
@@ -236,6 +274,8 @@ export interface JobOfferDTO {
   estimatedPayCents: number;
   customer: CustomerPublicDTO;
   createdAt: string;
+  /** After this the offer can't be accepted and goes to other workers. */
+  expiresAt: string;
 }
 
 export interface JobMessageDTO {
@@ -245,6 +285,10 @@ export interface JobMessageDTO {
   senderRole: UserRole;
   senderName: string;
   content: string;
+  /** Scam signals found in a worker's message: OFF_PLATFORM_PAYMENT, GIFT_CARDS, SENSITIVE_INFO. */
+  flags: string[];
+  /** Plain-language warning to show under the message when it's flagged, otherwise null. */
+  warning: string | null;
   createdAt: string;
 }
 
@@ -318,4 +362,38 @@ export interface AdminCustomerDTO extends UserDTO {
 export interface AdminWorkerDTO extends UserDTO {
   profile: WorkerProfileDTO;
   activeJobCount: number;
+}
+
+/** A code a customer gives a family member so they can link as a caregiver. */
+export interface CaregiverInviteDTO {
+  code: string;
+  expiresAt: string;
+}
+
+/** One of the customer's linked caregivers. */
+export interface CaregiverLinkDTO {
+  caregiver: { id: string; firstName: string; lastName: string; email: string };
+  linkedAt: string;
+}
+
+/** Everything on a caregiver's dashboard about one person they help. */
+export interface CaregiverPersonDTO {
+  customer: { id: string; firstName: string; lastName: string; address: string | null };
+  linkedAt: string;
+  /** Jobs a worker has accepted that aren't finished yet. arrivalCode is always null here. */
+  activeJobs: JobDetailDTO[];
+  /** Requests still looking for a worker. */
+  openRequests: ServiceRequestDTO[];
+  /** The 10 most recent requests, newest first. */
+  recentHistory: CustomerHistoryItemDTO[];
+}
+
+/** Someone who has helped this customer before, for a "Book James again" button. */
+export interface PastWorkerDTO {
+  worker: WorkerPublicDTO;
+  completedJobs: number;
+  lastJobDate: string;
+  lastServiceCategoryId: ServiceCategoryCode;
+  /** The customer's most recent rating of this worker, if they left one. */
+  yourLastRating: number | null;
 }

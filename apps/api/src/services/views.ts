@@ -7,7 +7,7 @@ import { offersRepo } from "../repositories/offers";
 import { requestsRepo } from "../repositories/requests";
 import { usersRepo } from "../repositories/users";
 import { workersRepo } from "../repositories/workers";
-import type { ServiceContext } from "./context";
+import type { Actor, ServiceContext } from "./context";
 import {
   toCustomerPublicDTO,
   toJobDTO,
@@ -46,7 +46,8 @@ export async function workerPublicViews(ctx: ServiceContext, workerIds: string[]
   return out;
 }
 
-export async function jobDetails(ctx: ServiceContext, jobs: JobRow[]): Promise<JobDetailDTO[]> {
+/** `viewer` decides what's private: only the job's customer and admins get the arrival code. */
+export async function jobDetails(ctx: ServiceContext, jobs: JobRow[], viewer: Actor): Promise<JobDetailDTO[]> {
   if (jobs.length === 0) return [];
   const requests = await requestsRepo.list(ctx.db, { ids: [...new Set(jobs.map((j) => j.requestId))] });
   const [requestDTOs, workers, customers, ratings, profiles] = await Promise.all([
@@ -76,13 +77,14 @@ export async function jobDetails(ctx: ServiceContext, jobs: JobRow[]): Promise<J
         customer: toCustomerPublicDTO(customer),
         distanceMiles: profile ? distanceMiles(profile, request) : null,
         rating: rating ? toRatingDTO(rating) : null,
+        arrivalCode: viewer.role === "ADMIN" || viewer.id === request.customerId ? j.arrivalCode : null,
       },
     ];
   });
 }
 
-export async function jobDetail(ctx: ServiceContext, job: JobRow): Promise<JobDetailDTO> {
-  return (await jobDetails(ctx, [job]))[0]!;
+export async function jobDetail(ctx: ServiceContext, job: JobRow, viewer: Actor): Promise<JobDetailDTO> {
+  return (await jobDetails(ctx, [job], viewer))[0]!;
 }
 
 export async function offerViews(ctx: ServiceContext, offers: JobOfferRow[]): Promise<JobOfferDTO[]> {
@@ -98,6 +100,6 @@ export async function offerViews(ctx: ServiceContext, offers: JobOfferRow[]): Pr
   return offers.flatMap((o) => {
     const r = requestById.get(o.requestId);
     const customer = r && customerById.get(r.customerId);
-    return r && customer ? [toJobOfferDTO(o, r, categoryById.get(r.serviceCategoryId), customer)] : [];
+    return r && customer ? [toJobOfferDTO(o, r, categoryById.get(r.serviceCategoryId), customer, ctx.config.matchOfferTtlSeconds)] : [];
   });
 }
