@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { CalendarDays, MessageCircle, Settings, User } from "lucide-react";
 
+// Lucide line icons (same set as Header/WorkerCard) instead of emoji,
+// which look different on every phone.
 const items = [
-  { href: "/chat", label: "Get Help", icon: "💬" },
-  { href: "/history", label: "My Services", icon: "🗓️" },
-  { href: "/profile", label: "Profile", icon: "👤" },
-  { href: "/settings", label: "Settings", icon: "⚙️" },
+  { href: "/chat", label: "Get Help", Icon: MessageCircle },
+  { href: "/history", label: "My Services", Icon: CalendarDays },
+  { href: "/profile", label: "Profile", Icon: User },
+  { href: "/settings", label: "Settings", Icon: Settings },
 ];
 
 export default function NavBar() {
@@ -30,9 +33,7 @@ export default function NavBar() {
                 }`}
                 aria-current={active ? "page" : undefined}
               >
-                <span aria-hidden="true" className="text-2xl leading-none">
-                  {item.icon}
-                </span>
+                <item.Icon aria-hidden="true" size={26} strokeWidth={active ? 2.5 : 2} />
                 {item.label}
               </Link>
             </li>

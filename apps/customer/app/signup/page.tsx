@@ -64,7 +64,7 @@ export default function SignupPage() {
               required
               value={form[f.key]}
               onChange={update(f.key)}
-              className="w-full rounded-control border-2 border-line bg-white px-4 py-3 text-lg text-ink"
+              className="w-full rounded-control border-2 border-field bg-white px-4 py-3 text-lg text-ink"
             />
           </div>
         ))}

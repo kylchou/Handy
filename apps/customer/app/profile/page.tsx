@@ -178,7 +178,7 @@ function Field({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           rows={3}
-          className="w-full rounded-control border-2 border-line bg-white px-4 py-3 text-lg text-ink"
+          className="w-full rounded-control border-2 border-field bg-white px-4 py-3 text-lg text-ink"
         />
       ) : (
         <input
@@ -186,7 +186,7 @@ function Field({
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-control border-2 border-line bg-white px-4 py-3 text-lg text-ink"
+          className="w-full rounded-control border-2 border-field bg-white px-4 py-3 text-lg text-ink"
         />
       )}
     </div>

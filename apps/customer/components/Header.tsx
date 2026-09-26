@@ -30,14 +30,14 @@ export default function Header({
         ) : (
           <Link
             href="/chat"
-            aria-label="Helping Hand home"
+            aria-label="Handy home"
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent text-white"
           >
             <HeartHandshake aria-hidden="true" size={20} />
           </Link>
         )}
         <h1 className="flex-1 truncate text-xl font-bold text-ink">
-          {title ?? "Helping Hand"}
+          {title ?? "Handy"}
         </h1>
         {right}
       </div>
