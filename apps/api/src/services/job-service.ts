@@ -1,0 +1,276 @@
+import {
+  canTransitionJob,
+  type CreateRatingBody,
+  type JobDetailDTO,
+  type JobMessageDTO,
+  type JobOfferDTO,
+  type JobStatus,
+  type RatingDTO,
+  type RealtimeEvent,
+} from "@handy/contracts";
+import type { JobRow, ServiceRequestRow } from "@handy/db";
+import { ApiError, forbidden, notFound } from "../lib/errors";
+import { addDays, formatTime12h, todayIn } from "../lib/time";
+import { jobMessagesRepo, jobsRepo, ratingsRepo } from "../repositories/jobs";
+import { offersRepo } from "../repositories/offers";
+import { requestsRepo } from "../repositories/requests";
+import { usersRepo } from "../repositories/users";
+import { workersRepo } from "../repositories/workers";
+import { Notifier, type Actor, type ServiceContext } from "./context";
+import { toJobMessageDTO, toRatingDTO } from "./mappers";
+import type { MatchingOrchestrator } from "./matching-orchestrator";
+import { jobDetail, jobDetails, offerViews } from "./views";
+
+const STATUS_EVENT: Partial<Record<JobStatus, RealtimeEvent["type"]>> = {
+  EN_ROUTE: "WORKER_EN_ROUTE",
+  ARRIVED: "WORKER_ARRIVED",
+  IN_PROGRESS: "JOB_STARTED",
+  COMPLETED: "JOB_COMPLETED",
+};
+
+const STATUS_TIMESTAMP: Partial<Record<JobStatus, keyof JobRow>> = {
+  EN_ROUTE: "enRouteAt",
+  ARRIVED: "arrivedAt",
+  IN_PROGRESS: "startedAt",
+  COMPLETED: "completedAt",
+  CANCELLED: "cancelledAt",
+};
+
+function isUniqueViolation(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string } };
+  return e?.code === "23505" || e?.cause?.code === "23505";
+}
+
+export class JobService {
+  private notifier: Notifier;
+
+  constructor(
+    private ctx: ServiceContext,
+    private matching: MatchingOrchestrator,
+  ) {
+    this.notifier = new Notifier(ctx);
+  }
+
+  // ---------- Offers (worker marketplace) ----------
+
+  async available(actor: Actor): Promise<JobOfferDTO[]> {
+    return offerViews(this.ctx, await offersRepo.pendingForWorker(this.ctx.db, actor.id));
+  }
+
+  /** First valid worker to accept gets the job; everyone else's offer is withdrawn. */
+  async accept(actor: Actor, offerId: string): Promise<JobDetailDTO> {
+    const { db } = this.ctx;
+    let result: { job: JobRow; request: ServiceRequestRow; withdrawn: Array<{ id: string; workerId: string }> };
+    try {
+      result = await db.transaction(async (tx) => {
+        const offer = await offersRepo.get(tx, offerId);
+        if (!offer || offer.workerId !== actor.id) throw notFound("Job offer");
+        const request = await requestsRepo.getForUpdate(tx, offer.requestId);
+        const freshOffer = await offersRepo.get(tx, offerId);
+        if (!request || request.status !== "SEARCHING" || freshOffer?.status !== "PENDING") {
+          throw new ApiError("JOB_NO_LONGER_AVAILABLE", "Sorry, this job is no longer available.");
+        }
+        const now = new Date();
+        const job = await jobsRepo.create(tx, { requestId: request.id, workerId: actor.id, status: "ACCEPTED", acceptedAt: now });
+        await offersRepo.update(tx, offerId, { status: "ACCEPTED", respondedAt: now });
+        const withdrawn = await offersRepo.withdrawPending(tx, request.id, offerId);
+        const updated = await requestsRepo.update(tx, request.id, { status: "MATCHED" });
+        return { job, request: updated, withdrawn };
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new ApiError("JOB_NO_LONGER_AVAILABLE", "Sorry, this job is no longer available.");
+      throw err;
+    }
+
+    const { job, request, withdrawn } = result;
+    const detail = await jobDetail(this.ctx, job);
+    for (const o of withdrawn) this.notifier.emit([o.workerId], "JOB_NO_LONGER_AVAILABLE", { requestId: request.id, offerId: o.id });
+    this.notifier.emit([request.customerId, actor.id], "JOB_ACCEPTED", {
+      jobId: job.id,
+      requestId: request.id,
+      status: job.status,
+      workerId: actor.id,
+    });
+    await this.notifier.notify(
+      request.customerId,
+      "JOB_ACCEPTED",
+      `${detail.worker.firstName} is helping you ${this.friendlyWhen(request)}.`,
+      `${detail.worker.displayName} · ${detail.worker.rating.toFixed(1)} stars · ${detail.worker.completedJobs} completed jobs`,
+      { jobId: job.id, requestId: request.id },
+    );
+    return detail;
+  }
+
+  async decline(actor: Actor, offerId: string): Promise<JobOfferDTO> {
+    const offer = await offersRepo.get(this.ctx.db, offerId);
+    if (!offer || offer.workerId !== actor.id) throw notFound("Job offer");
+    if (offer.status !== "PENDING") throw new ApiError("CONFLICT", "This job offer is no longer open.");
+    const updated = await offersRepo.update(this.ctx.db, offerId, { status: "DECLINED", respondedAt: new Date() });
+    // If nobody is left holding an offer, widen the search right away.
+    const remaining = (await offersRepo.byRequest(this.ctx.db, offer.requestId)).filter((o) => o.status === "PENDING");
+    if (remaining.length === 0) await this.matching.broadcast(offer.requestId);
+    return (await offerViews(this.ctx, [updated]))[0]!;
+  }
+
+  // ---------- Jobs ----------
+
+  async list(actor: Actor, status?: JobStatus): Promise<JobDetailDTO[]> {
+    const filter =
+      actor.role === "WORKER" ? { workerId: actor.id, status } : actor.role === "CUSTOMER" ? { customerId: actor.id, status } : { status };
+    return jobDetails(this.ctx, await jobsRepo.list(this.ctx.db, filter));
+  }
+
+  async get(actor: Actor, jobId: string): Promise<JobDetailDTO> {
+    const { job } = await this.load(actor, jobId);
+    return jobDetail(this.ctx, job);
+  }
+
+  async updateStatus(actor: Actor, jobId: string, to: JobStatus, reason?: string): Promise<JobDetailDTO> {
+    const { db } = this.ctx;
+    await this.load(actor, jobId);
+
+    const { job, request } = await db.transaction(async (tx) => {
+      const current = await jobsRepo.getForUpdate(tx, jobId);
+      if (!current) throw notFound("Job");
+      if (!canTransitionJob(current.status, to, actor.role)) {
+        throw new ApiError("INVALID_TRANSITION", `A job that is ${current.status.toLowerCase().replace("_", " ")} can't be changed to ${to.toLowerCase().replace("_", " ")}.`, {
+          from: current.status,
+          to,
+        });
+      }
+      const req = (await requestsRepo.getForUpdate(tx, current.requestId))!;
+      const now = new Date();
+      const patch: Partial<JobRow> = { status: to };
+      const tsField = STATUS_TIMESTAMP[to];
+      if (tsField) (patch as Record<string, unknown>)[tsField] = now;
+
+      let request = req;
+      if (to === "COMPLETED") {
+        patch.finalPriceCents = req.estimatedPriceCents;
+        request = await requestsRepo.update(tx, req.id, { status: "COMPLETED" });
+        const profile = await workersRepo.getProfile(tx, current.workerId);
+        if (profile) await workersRepo.updateProfile(tx, current.workerId, { completedJobs: profile.completedJobs + 1 });
+      } else if (to === "CANCELLED") {
+        patch.cancelReason = reason ?? null;
+        // A worker dropping out puts the request back on the market; otherwise the request ends.
+        request = await requestsRepo.update(
+          tx,
+          req.id,
+          actor.role === "WORKER" ? { status: "SEARCHING", lastMatchedAt: null } : { status: "CANCELLED" },
+        );
+      }
+      const job = await jobsRepo.update(tx, jobId, patch);
+      return { job, request };
+    });
+
+    await this.announceStatus(actor, job, request);
+    if (to === "CANCELLED" && request.status === "SEARCHING") await this.matching.broadcast(request.id);
+    return jobDetail(this.ctx, job);
+  }
+
+  private async announceStatus(actor: Actor, job: JobRow, request: ServiceRequestRow) {
+    const parties = [request.customerId, job.workerId];
+    const ref = { jobId: job.id, requestId: request.id, status: job.status };
+    const worker = await usersRepo.findById(this.ctx.db, job.workerId);
+    const name = worker?.firstName ?? "Your helper";
+    const data = { jobId: job.id, requestId: request.id };
+
+    if (job.status === "CANCELLED") {
+      const cancelledBy = actor.role;
+      this.notifier.emit(parties, "JOB_CANCELLED", { ...ref, cancelledBy });
+      if (cancelledBy === "WORKER") {
+        await this.notifier.notify(request.customerId, "JOB_CANCELLED", `${name} can no longer make it.`, "Don't worry — we're looking for someone else to help you.", data);
+      } else if (cancelledBy === "CUSTOMER") {
+        await this.notifier.notify(job.workerId, "JOB_CANCELLED", "The customer cancelled this job.", null, data);
+      } else {
+        await this.notifier.notify(request.customerId, "JOB_CANCELLED", "Your job was cancelled by our support team.", null, data);
+        await this.notifier.notify(job.workerId, "JOB_CANCELLED", "This job was cancelled by our support team.", null, data);
+      }
+      return;
+    }
+
+    const type = STATUS_EVENT[job.status];
+    if (type) this.notifier.emit(parties, type as "WORKER_EN_ROUTE", ref);
+    const messages: Partial<Record<JobStatus, [string, string | null]>> = {
+      EN_ROUTE: [`${name} is on the way.`, null],
+      ARRIVED: [`${name} has arrived.`, null],
+      IN_PROGRESS: [`${name} has started working.`, null],
+      COMPLETED: [`${name} has marked your job as complete.`, "Was everything completed successfully? You can leave a rating."],
+    };
+    const msg = messages[job.status];
+    if (msg) await this.notifier.notify(request.customerId, type ?? job.status, msg[0], msg[1], data);
+  }
+
+  // ---------- Chat ----------
+
+  async messages(actor: Actor, jobId: string): Promise<JobMessageDTO[]> {
+    await this.load(actor, jobId);
+    const rows = await jobMessagesRepo.list(this.ctx.db, jobId);
+    const senders = new Map((await usersRepo.findByIds(this.ctx.db, [...new Set(rows.map((r) => r.senderId))])).map((u) => [u.id, u]));
+    return rows.map((r) => toJobMessageDTO(r, senders.get(r.senderId)));
+  }
+
+  async sendMessage(actor: Actor, jobId: string, content: string): Promise<JobMessageDTO> {
+    const { job, request } = await this.load(actor, jobId);
+    if (actor.role === "ADMIN") throw forbidden("Admins can read but not send job messages.");
+    if (job.status === "CANCELLED" || job.status === "COMPLETED") {
+      throw new ApiError("CONFLICT", "Messaging is closed for this job.");
+    }
+    const row = await jobMessagesRepo.create(this.ctx.db, { jobId, senderId: actor.id, content });
+    const message = toJobMessageDTO(row, (await usersRepo.findById(this.ctx.db, actor.id)) ?? undefined);
+    const recipient = actor.id === job.workerId ? request.customerId : job.workerId;
+    this.notifier.emit([recipient, actor.id], "MESSAGE_RECEIVED", { jobId, message });
+    return message;
+  }
+
+  // ---------- Rating ----------
+
+  async rate(actor: Actor, jobId: string, body: CreateRatingBody): Promise<RatingDTO> {
+    const { job, request } = await this.load(actor, jobId);
+    if (request.customerId !== actor.id) throw forbidden("Only the customer can rate this job.");
+    if (job.status !== "COMPLETED") throw new ApiError("CONFLICT", "You can rate a job once it's completed.");
+
+    let rating;
+    try {
+      rating = await this.ctx.db.transaction(async (tx) => {
+        const rating = await ratingsRepo.create(tx, {
+          jobId,
+          customerId: actor.id,
+          workerId: job.workerId,
+          score: body.score,
+          comment: body.comment || null,
+        });
+        const profile = await workersRepo.getProfile(tx, job.workerId);
+        if (profile) {
+          const count = profile.ratingCount + 1;
+          const avg = (profile.rating * profile.ratingCount + body.score) / count;
+          await workersRepo.updateProfile(tx, job.workerId, { rating: Math.round(avg * 100) / 100, ratingCount: count });
+        }
+        return rating;
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) throw new ApiError("CONFLICT", "You've already rated this job. Thank you!");
+      throw err;
+    }
+    this.notifier.emit([job.workerId], "RATING_SUBMITTED", { jobId, workerId: job.workerId, score: body.score });
+    await this.notifier.notify(job.workerId, "RATING_SUBMITTED", `You received a ${body.score}-star rating.`, body.comment ?? null, { jobId });
+    return toRatingDTO(rating);
+  }
+
+  // ---------- Access ----------
+
+  /** The job's customer, its assigned worker, and admins may access a job. */
+  private async load(actor: Actor, jobId: string): Promise<{ job: JobRow; request: ServiceRequestRow }> {
+    const job = await jobsRepo.get(this.ctx.db, jobId);
+    if (!job) throw notFound("Job");
+    const request = (await requestsRepo.get(this.ctx.db, job.requestId))!;
+    if (actor.role !== "ADMIN" && job.workerId !== actor.id && request.customerId !== actor.id) throw forbidden();
+    return { job, request };
+  }
+
+  private friendlyWhen(r: ServiceRequestRow): string {
+    const today = todayIn(this.ctx.config.timezone);
+    const day = r.requestedDate === today ? "today" : r.requestedDate === addDays(today, 1) ? "tomorrow" : `on ${r.requestedDate}`;
+    return `${day} at ${formatTime12h(r.requestedStartTime)}`;
+  }
+}
