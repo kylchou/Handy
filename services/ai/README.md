@@ -81,7 +81,7 @@ The real key goes in the root `.env` only, never committed. It's empty in `.env.
 | env (root `.env`) | meaning |
 |---|---|
 | `MODEL_API_KEY` | Meta Model API key for Muse Spark. Required. |
-| `AI_MODEL` | Optional. Default `muse-spark-1.3`. |
+| `AI_MODEL` | Optional. Default `muse-spark-1.2`, which was about twice as fast as `muse-spark-1.3` in testing with the same accuracy. |
 | `AI_SERVICE_MODULE` | `@handy/ai`. Set empty to use the backend's rule-based fallback (no key needed). |
 
 No key → `createAIService()` throws `MODEL_API_KEY is not set`, backend starts with its built-in assistant.

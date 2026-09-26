@@ -27,9 +27,9 @@ Type (or tap the mic and say):
 
 > I need help moving a couch from my garage into the living room tomorrow at 2pm at my house
 
-The AI takes about 10 seconds. While it thinks, say: *"There's no form and no category to pick. The AI figures out it's moving help, the day, the time, and that 'my house' means her address on file."*
+The AI takes about 5 seconds, so say this while it thinks: *"There's no form and no category to pick. The AI figures out it's moving help, the day, the time, and that 'my house' means her address on file."*
 
-When it asks to confirm, say *"Yes, that's right"*. The summary card shows up.
+When it asks to confirm, say *"Yes, that's right"*. This reply takes longer, around 10 to 15 seconds, then the summary card shows up.
 
 **3. Confirm**
 
