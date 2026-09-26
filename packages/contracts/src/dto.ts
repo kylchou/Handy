@@ -78,7 +78,7 @@ export interface WorkerQualificationDTO {
   qualificationLevel: QualificationLevel;
 }
 
-/** Full worker profile — only returned to the worker themself and admins. */
+/** Full worker profile. Only sent to the worker themself and admins. */
 export interface WorkerProfileDTO {
   userId: string;
   bio: string | null;
@@ -145,6 +145,32 @@ export interface ServiceRequestDraft {
   requestedEndTime?: string | null;
   urgency?: Urgency | null;
   specialRequirements?: string[] | null;
+  /** A worker the customer wants again ("Can James come back?"). They're asked first. */
+  preferredWorkerId?: string | null;
+  /** Set when they ask for it to happen regularly ("every Saturday"). */
+  repeat?: RepeatFrequency | null;
+}
+
+export type RepeatFrequency = "WEEKLY" | "BIWEEKLY";
+
+/** A request that repeats. Each visit becomes its own ServiceRequest a few days ahead. */
+export interface RecurringScheduleDTO {
+  id: string;
+  customerId: string;
+  frequency: RepeatFrequency;
+  serviceCategoryId: ServiceCategoryCode;
+  description: string;
+  location: string;
+  /** 0 = Sunday. */
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  /** Whoever did the last visit and got a good rating is asked first next time. */
+  preferredWorkerId: string | null;
+  /** Date of the next visit that hasn't been created yet. */
+  nextDate: string;
+  active: boolean;
+  createdAt: string;
 }
 
 export interface ConversationDTO {
@@ -175,6 +201,10 @@ export interface ServiceRequestDTO {
   requestedEndTime: string;
   urgency: Urgency;
   specialRequirements: string[];
+  /** Offered to this worker alone first; if they pass, it goes to everyone. */
+  preferredWorkerId: string | null;
+  /** Set when this visit came from a repeating request. */
+  scheduleId: string | null;
   status: ServiceRequestStatus;
   estimatedPriceCents: number;
   platformFeeCents: number;
@@ -212,7 +242,7 @@ export interface JobDetailDTO extends JobDTO {
   request: ServiceRequestDTO;
   worker: WorkerPublicDTO;
   customer: CustomerPublicDTO;
-  /** Worker → customer distance in miles, when coordinates are known. */
+  /** Distance from the worker to the customer in miles, when coordinates are known. */
   distanceMiles: number | null;
   rating: RatingDTO | null;
   /**
@@ -234,7 +264,7 @@ export interface JobOfferDTO {
   serviceCategoryId: ServiceCategoryCode;
   serviceName: string;
   description: string;
-  /** Approximate area only until accepted — the street address is withheld. */
+  /** Just the general area until they accept, not the street address. */
   approximateLocation: string;
   requestedDate: string;
   requestedStartTime: string;
@@ -356,4 +386,14 @@ export interface CaregiverPersonDTO {
   openRequests: ServiceRequestDTO[];
   /** The 10 most recent requests, newest first. */
   recentHistory: CustomerHistoryItemDTO[];
+}
+
+/** Someone who has helped this customer before, for a "Book James again" button. */
+export interface PastWorkerDTO {
+  worker: WorkerPublicDTO;
+  completedJobs: number;
+  lastJobDate: string;
+  lastServiceCategoryId: ServiceCategoryCode;
+  /** The customer's most recent rating of this worker, if they left one. */
+  yourLastRating: number | null;
 }

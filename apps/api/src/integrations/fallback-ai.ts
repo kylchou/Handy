@@ -30,7 +30,7 @@ export class FallbackAIService implements AIService {
     if (UNSUPPORTED.test(lower)) {
       return {
         message:
-          "I'm sorry — our helpers can't provide medical or nursing care. For that, please contact your doctor. " +
+          "I'm sorry, our helpers can't provide medical or nursing care. For that, please contact your doctor. " +
           "I can help with everyday things like errands, rides, chores around the house, or a friendly visit.",
         extractedData: {},
         missingInformation: missing(ctx.currentDraft),
@@ -55,6 +55,18 @@ export class FallbackAIService implements AIService {
       set("description", summarize(text));
     }
 
+    // "Can James come back?" / "same person as last time"
+    const past = ctx.pastWorkers ?? [];
+    const named = past.find((w) => new RegExp(`\\b${w.firstName.replace(/[^a-z]/gi, "")}\\b`, "i").test(text));
+    // Without a name, only clearly generic phrases count; "Can Tom come back?" must never pick someone else.
+    const wantsSame = /\b(same (person|helper|one|guy|lady)|(like|as) last time)\b/.test(lower);
+    const pick = named ?? (wantsSame ? past[0] : undefined);
+    if (pick && pick.workerId !== draft.preferredWorkerId) {
+      set("preferredWorkerId", pick.workerId);
+      if (!draft.serviceCategoryId) set("serviceCategoryId", pick.lastServiceCategoryId);
+      if (!draft.description) set("description", `Help from ${pick.firstName} again`);
+    }
+
     const date = parseDate(lower, ctx.today);
     if (date) set("requestedDate", date);
 
@@ -74,6 +86,10 @@ export class FallbackAIService implements AIService {
     if (/\b(urgent|asap|right away|as soon as possible|immediately)\b/.test(lower)) set("urgency", "HIGH");
     if (!draft.urgency) set("urgency", "NORMAL");
 
+    // "every Saturday", "weekly", "every other week"
+    if (/\b(every other (week|\w+day)|every (2|two) weeks|bi-?weekly)\b/.test(lower)) set("repeat", "BIWEEKLY");
+    else if (/\b(every (week|\w+day)|weekly|once a week)\b/.test(lower)) set("repeat", "WEEKLY");
+
     const missingInformation = missing(draft);
     const readyToSubmit = missingInformation.length === 0;
 
@@ -88,6 +104,7 @@ export class FallbackAIService implements AIService {
     }
 
     let reply: string;
+    const preferredName = past.find((w) => w.workerId === draft.preferredWorkerId)?.firstName;
     const categoryName = ctx.serviceCategories.find((c) => c.id === draft.serviceCategoryId)?.name.toLowerCase() ?? "that";
     if (readyToSubmit) {
       const wasReady = missing(ctx.currentDraft).length === 0;
@@ -97,11 +114,18 @@ export class FallbackAIService implements AIService {
         reply =
           `Here's what I have: ${categoryName} on ${friendlyDate(draft.requestedDate!, ctx.today)} ` +
           `around ${formatTime12h(draft.requestedStartTime!)} at ${draft.location}. ` +
-          `Details: ${draft.description}. Would you like me to find someone?`;
+          `Details: ${draft.description}.` +
+          (preferredName ? ` I'll ask ${preferredName} first.` : "") +
+          (draft.repeat ? ` It'll repeat ${draft.repeat === "WEEKLY" ? "every week" : "every 2 weeks"}.` : "") +
+          " Would you like me to find someone?";
       }
     } else {
       const next = missingInformation[0];
-      const ack = Object.keys(changed).length > 1 ? "Got it. " : "";
+      const ack = changed.preferredWorkerId
+        ? `Of course, I'll ask ${preferredName} first. `
+        : Object.keys(changed).length > 1
+          ? "Got it. "
+          : "";
       if (next === "requestedDate") reply = `${ack}I can help with ${categoryName}. What day would you like someone to come?`;
       else if (next === "requestedStartTime") reply = `${ack}What time would work best for you?`;
       else if (next === "location")

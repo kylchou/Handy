@@ -10,7 +10,7 @@ let handle: DbHandle;
 beforeAll(async () => {
   handle = await createTestDb();
   server = await buildApp({
-    config: loadConfig({ seedOnStart: false, jwtSecret: "docs-test", aiServiceModule: "", matchingServiceModule: "", docsEnabled: true }),
+    config: loadConfig({ seedOnStart: false, jwtSecret: "docs-test", aiServiceModule: "", matchingServiceModule: "", geocoder: "off", docsEnabled: true }),
     dbHandle: handle,
     logger: false,
     backgroundJobs: false,
@@ -55,7 +55,7 @@ describe("API docs", () => {
     expect(spec.paths["/api/v1/ws"]).toBeUndefined();
     expect(spec.paths["/health"]).toBeUndefined();
     const operations = Object.values(spec.paths).reduce((n, ops) => n + Object.keys(ops).length, 0);
-    expect(operations).toBe(50); // the 49 endpoints in ApiResponses, plus the SSE stream
+    expect(operations).toBe(53); // the 52 endpoints in ApiResponses, plus the SSE stream
   });
 
   it("doesn't change how requests are validated or answered", async () => {

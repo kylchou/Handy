@@ -1,5 +1,5 @@
 /**
- * Keyword screening for the customer ↔ worker chat. Older adults are a common
+ * Keyword screening for the chat between the customer and worker. Older adults are a common
  * target for "pay me on Venmo instead" and "I need your card number" scams, so
  * a worker message that looks like one gets flagged and the customer warned.
  */

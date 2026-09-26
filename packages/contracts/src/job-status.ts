@@ -30,7 +30,7 @@ export function canTransitionJob(from: JobStatus, to: JobStatus, role: UserRole)
   return JOB_STATUS_TRANSITIONS[from][to]?.includes(role) ?? false;
 }
 
-/** The next forward step for the worker, e.g. ACCEPTED → EN_ROUTE ("I'm On My Way"). */
+/** The next forward step for the worker, e.g. ACCEPTED -> EN_ROUTE ("I'm On My Way"). */
 export function nextWorkerJobStatus(current: JobStatus): JobStatus | null {
   const next: Partial<Record<JobStatus, JobStatus>> = {
     ACCEPTED: "EN_ROUTE",

@@ -13,8 +13,22 @@ export function distanceMiles(
   return Math.round(2 * EARTH_RADIUS_MILES * Math.asin(Math.sqrt(h)) * 10) / 10;
 }
 
-/** Drops the street number/name: "123 Main Street, Atlanta, GA" → "Atlanta, GA". */
+/** Drops the street number/name: "123 Main Street, Atlanta, GA" -> "Atlanta, GA". */
 export function approximateLocation(location: string): string {
   const parts = location.split(",").map((p) => p.trim()).filter(Boolean);
   return parts.length > 1 ? parts.slice(1).join(", ") : "Near the customer's home";
+}
+
+/** Loose match so "123 Main St" and "123 main street" count as the same place. */
+export function sameAddress(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\bstreet\b/g, "st")
+      .replace(/\bavenue\b/g, "ave")
+      .replace(/\broad\b/g, "rd")
+      .replace(/\bdrive\b/g, "dr")
+      .replace(/[^a-z0-9]/g, "");
+  return norm(a) === norm(b) || norm(a).startsWith(norm(b)) || norm(b).startsWith(norm(a));
 }

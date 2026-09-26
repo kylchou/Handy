@@ -22,6 +22,7 @@ import type {
   JobOfferStatus,
   JobStatus,
   QualificationLevel,
+  RepeatFrequency,
   SafetyStatus,
   SenderType,
   ServiceCategoryCode,
@@ -137,7 +138,7 @@ export const conversations = pgTable(
   (t) => [index("conversations_customer_idx").on(t.customerId)],
 );
 
-/** Messages in an AI conversation (customer ↔ assistant). */
+/** Messages in an AI conversation (customer and assistant). */
 export const messages = pgTable(
   "messages",
   {
@@ -151,6 +152,37 @@ export const messages = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index("messages_conversation_idx").on(t.conversationId, t.createdAt)],
+);
+
+/** A request that repeats. The sweep turns each upcoming visit into a service request a few days ahead. */
+export const recurringSchedules = pgTable(
+  "recurring_schedules",
+  {
+    id: id(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    frequency: text("frequency").$type<RepeatFrequency>().notNull(),
+    serviceCategoryId: text("service_category_id")
+      .$type<ServiceCategoryCode>()
+      .notNull()
+      .references(() => serviceCategories.id),
+    description: text("description").notNull(),
+    location: text("location").notNull(),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    dayOfWeek: integer("day_of_week").notNull(),
+    startTime: text("start_time").notNull(),
+    endTime: text("end_time").notNull(),
+    urgency: text("urgency").$type<Urgency>().notNull().default("NORMAL"),
+    specialRequirements: jsonb("special_requirements").$type<string[]>().notNull().default([]),
+    preferredWorkerId: uuid("preferred_worker_id").references(() => users.id, { onDelete: "set null" }),
+    nextDate: date("next_date", { mode: "string" }).notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("recurring_schedules_customer_idx").on(t.customerId), index("recurring_schedules_next_idx").on(t.active, t.nextDate)],
 );
 
 export const serviceRequests = pgTable(
@@ -175,6 +207,8 @@ export const serviceRequests = pgTable(
     urgency: text("urgency").$type<Urgency>().notNull().default("NORMAL"),
     specialRequirements: jsonb("special_requirements").$type<string[]>().notNull().default([]),
     status: text("status").$type<ServiceRequestStatus>().notNull().default("SEARCHING"),
+    preferredWorkerId: uuid("preferred_worker_id").references(() => users.id, { onDelete: "set null" }),
+    scheduleId: uuid("schedule_id").references(() => recurringSchedules.id, { onDelete: "set null" }),
     estimatedPriceCents: integer("estimated_price_cents").notNull(),
     platformFeeCents: integer("platform_fee_cents").notNull(),
     /** How many times offers have been broadcast (0 = initial wave). */
@@ -249,7 +283,7 @@ export const jobs = pgTable(
   ],
 );
 
-/** Customer ↔ worker chat on a job. */
+/** Chat between the customer and worker on a job. */
 export const jobMessages = pgTable(
   "job_messages",
   {
@@ -306,7 +340,7 @@ export const notifications = pgTable(
   (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
 );
 
-/** A customer ↔ caregiver (family member) link. Caregivers can see the customer's jobs and get key updates. */
+/** Links a customer to a caregiver (family member). Caregivers can see the customer's jobs and get key updates. */
 export const caregiverLinks = pgTable(
   "caregiver_links",
   {
@@ -348,3 +382,4 @@ export type RatingRow = typeof ratings.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
 export type CaregiverLinkRow = typeof caregiverLinks.$inferSelect;
 export type CaregiverInviteRow = typeof caregiverInvites.$inferSelect;
+export type RecurringScheduleRow = typeof recurringSchedules.$inferSelect;

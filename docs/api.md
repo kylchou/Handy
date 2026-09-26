@@ -83,6 +83,9 @@ A few things to know:
 | `GET /customers/me/profile` | |
 | `PUT /customers/me/profile` | Address, coordinates, accessibility/communication preferences, emergency contact |
 | `GET /customers/me/history` | Everything for the history screen (service, worker, date, status, price, rating) |
+| `GET /customers/me/schedules` | Their repeating requests |
+| `DELETE /customers/me/schedules/:scheduleId` | Stop a repeating request |
+| `GET /customers/me/past-workers` | Everyone who's helped this customer before, with their last rating. For a "Book James again" button. |
 
 ### AI chat
 
@@ -108,7 +111,13 @@ If `emergency` isn't null, show it clearly. It tells the user to call 911, and t
 | `POST /requests/:id/cancel` | customer, admin | Only while `SEARCHING` |
 | `GET /requests/:id/matches` | customer, admin | Ranked workers with scores and reasons. Mostly for the admin dashboard. |
 
-Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`, or `EXPIRED` if nobody accepted before the requested time window ended. When a request expires, the customer gets a `REQUEST_EXPIRED` event and a notification asking if they want to pick another time. Requests for a time that's already passed get rejected with a 400.
+**Where the job is.** If the request's `location` is the customer's home address, we use the coordinates on their profile. Anywhere else gets looked up with OpenStreetMap, so distances and service radius checks use the real place. Saving an address on a customer or worker profile (or at signup) fills in `latitude`/`longitude` the same way, so you don't need to send them. Set `GEOCODER_CONTACT` in `.env` to an email or URL, their usage policy asks for it.
+
+**Repeating requests.** Send `repeat: "WEEKLY"` or `repeat: "BIWEEKLY"` with `POST /requests` (or the AI sets it when they say "every Saturday" or "every other week"). That request becomes the first visit, and each visit after that gets posted to workers 3 days ahead with the same day, time, and details. Whoever did the last visit and got 4 or 5 stars is asked first next time, so it tends to be the same helper each week. Visits have a `scheduleId`. `GET /customers/me/schedules` lists them and `DELETE /customers/me/schedules/:id` stops one (already-posted visits stay booked). Cancelling one visit doesn't stop the rest.
+
+**Booking someone again.** Send `preferredWorkerId` when creating a request (or the AI sets it when the customer says "Can James come back?" or "same person as last time"). The request goes to that worker alone first. If they decline or don't answer in time, it goes to everyone like normal. If they can't do it at all (not available, doesn't do that kind of job), the customer gets told right away and it goes out to everyone. Workers the customer rated 4–5 stars also get a bump in matching, and workers they rated 1–2 stars never get their jobs again.
+
+Request statuses: `SEARCHING -> MATCHED -> COMPLETED`, or `CANCELLED`, or `EXPIRED` if nobody accepted before the requested time window ended. When a request expires, the customer gets a `REQUEST_EXPIRED` event and a notification asking if they want to pick another time. Requests for a time that's already passed get rejected with a 400.
 
 ### Jobs
 
@@ -127,10 +136,10 @@ Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`, or `EXP
 Job status order (can't skip steps):
 
 ```
-ACCEPTED ─► EN_ROUTE ─► ARRIVED ─► IN_PROGRESS ─► COMPLETED     (worker, admin)
-   │           │           │
-   └───────────┴───────────┴─► CANCELLED
+ACCEPTED -> EN_ROUTE -> ARRIVED -> IN_PROGRESS -> COMPLETED
 ```
+
+Only the worker (or an admin) moves it forward.
 
 - Customer can cancel while `ACCEPTED` or `EN_ROUTE`.
 - Worker or admin can cancel any time before `IN_PROGRESS`.
@@ -255,8 +264,8 @@ Admins get every event.
 
 The backend uses the interfaces in [ai.ts](../packages/contracts/src/ai.ts) and [matching.ts](../packages/contracts/src/matching.ts). Your services don't need to touch the database, the backend passes in everything and saves the results.
 
-- `@handy/ai` should export `createAIService()`. The backend calls `processMessage(conversationId, message, context)`, where `context` has the chat history, current draft, customer's name and home address, today's date, and the categories. Return an `AIResponse`. In `extractedData`, `undefined` means don't change the field and `null` means clear it.
-- `@handy/matching` should export `createMatchingService()`. The backend calls `findMatches(request, candidates)` with workers that already have their qualifications, schedules, bookings, and experience loaded. Return `WorkerMatch[]` sorted best first. The top `MATCH_INITIAL_OFFERS` workers get the job first. If their offers expire without anyone accepting, it goes to the next workers, and after `MATCH_EXPAND_AFTER_SECONDS` it goes to everyone else who qualifies.
+- `@handy/ai` should export `createAIService()`. The backend calls `processMessage(conversationId, message, context)`, where `context` has the chat history, current draft, customer's name and home address, today's date, the categories, and `pastWorkers` (people who've helped before, so you can set `preferredWorkerId` when they ask for someone by name). Return an `AIResponse`. In `extractedData`, `undefined` means don't change the field and `null` means clear it.
+- `@handy/matching` should export `createMatchingService()`. The backend calls `findMatches(request, candidates)` with workers that already have their qualifications, schedules, bookings, experience, and `withCustomer` history loaded (workers the customer rated 1–2 stars are already removed). Return `WorkerMatch[]` sorted best first. The top `MATCH_INITIAL_OFFERS` workers get the job first. If their offers expire without anyone accepting, it goes to the next workers, and after `MATCH_EXPAND_AFTER_SECONDS` it goes to everyone else who qualifies.
 
 When they're ready, add `"@handy/ai": "workspace:*"` and `"@handy/matching": "workspace:*"` to `apps/api/package.json` and restart. The startup log says which one is being used.
 
@@ -266,6 +275,6 @@ The backend also has its own emergency check on every message and request, separ
 
 ## Known limitations
 
-- No geocoding, so distance uses the customer's home location even if the job is somewhere else.
+- Address lookup uses OpenStreetMap's free service, which only allows 1 lookup per second. That's fine for a demo but a real launch would want a paid geocoder. If a lookup fails, the job falls back to the customer's home location.
 - Payments are fake. Price is the category's base price, +$10 if urgent. Platform fee is `PLATFORM_FEE_CENTS`.
 - Live updates and logout tracking are stored in memory, so it only works with one API server running.

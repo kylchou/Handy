@@ -14,8 +14,9 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 ## What the backend handles
 
 - AI chat that turns a conversation into a job request
-- Matching workers by qualifications, schedule, distance, rating, and experience
+- Matching workers by qualifications, schedule, distance, rating, and experience. Addresses get looked up on a map (OpenStreetMap), so "2.4 miles away" is real even when the job isn't at the customer's house
 - Only verified workers get jobs
+- "Can James come back?": customers can ask for someone who helped before (in the chat or with a button), and that person gets asked first. People they rated 1–2 stars never get their jobs again
 - Workers can't accept two jobs at the same time
 - Arrival code: the customer gets a 4-digit code and the worker has to enter it to mark that they've arrived, so the customer knows the right person is at the door
 - Offers expire after 5 minutes if the worker doesn't respond, and the job goes to the next person
@@ -23,6 +24,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - If a worker cancels, the job goes back out to other workers
 - Anything that sounds like an emergency is blocked and the user is told to call 911
 - Reminders the day before and an hour before each job, for both the customer and the worker
+- Repeating requests ("mow my lawn every Saturday"): each visit gets posted a few days ahead, and the same helper gets asked first if the last visit went well
 - No-show alerts: if a worker hasn't headed out 10 minutes after the start time, the customer, their family, and admins all get told
 - Workers only see a general area until they accept, then they get the full address
 - Customer and worker chat, so nobody has to share phone numbers. Worker messages that look like a scam (pay me on Venmo, gift cards, asking for your card number) get flagged and the customer and their family are warned, and nobody can send a card or Social Security number

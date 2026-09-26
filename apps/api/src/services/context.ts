@@ -2,6 +2,7 @@ import type { FastifyBaseLogger } from "fastify";
 import type { AIService, MatchingService, NewRealtimeEvent, RealtimeEvent, UserRole } from "@handy/contracts";
 import type { Database } from "@handy/db";
 import type { AppConfig } from "../config";
+import type { Geocoder } from "../lib/geocoder";
 import { caregiversRepo } from "../repositories/caregivers";
 import { notificationsRepo } from "../repositories/notifications";
 import { usersRepo } from "../repositories/users";
@@ -14,6 +15,7 @@ export interface ServiceContext {
   bus: EventBus;
   ai: AIService;
   matching: MatchingService;
+  geocoder: Geocoder;
   log: FastifyBaseLogger;
 }
 

@@ -12,7 +12,7 @@ let baseUrl: string;
 beforeAll(async () => {
   handle = await createTestDb();
   server = await buildApp({
-    config: loadConfig({ seedOnStart: false, jwtSecret: "rl-test", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: true }),
+    config: loadConfig({ seedOnStart: false, jwtSecret: "rl-test", aiServiceModule: "", matchingServiceModule: "", geocoder: "off", rateLimitEnabled: true }),
     dbHandle: handle,
     logger: false,
     backgroundJobs: false,

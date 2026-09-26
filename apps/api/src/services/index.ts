@@ -10,6 +10,7 @@ import { MatchingOrchestrator } from "./matching-orchestrator";
 import { NotificationService } from "./notification-service";
 import { ProfileService } from "./profile-service";
 import { RequestService } from "./request-service";
+import { ScheduleService } from "./schedule-service";
 
 export function createServices(ctx: ServiceContext, sign: TokenSigner) {
   const matching = new MatchingOrchestrator(ctx);
@@ -23,6 +24,7 @@ export function createServices(ctx: ServiceContext, sign: TokenSigner) {
     requests: new RequestService(ctx, conversations, matching),
     jobs: new JobService(ctx, matching),
     matching,
+    schedules: new ScheduleService(ctx, matching),
     notifications: new NotificationService(ctx),
     admin: new AdminService(ctx),
     categories: {

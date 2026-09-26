@@ -53,6 +53,9 @@ const ROUTE_DOCS: Record<keyof ApiResponses, RouteDoc> = {
   "GET /customers/me/profile": { tag: "Customers", summary: "Get my profile", returns: "CustomerProfileDTO", who: "customer" },
   "PUT /customers/me/profile": { tag: "Customers", summary: "Update my profile", returns: "CustomerProfileDTO", who: "customer", body: updateCustomerProfileSchema },
   "GET /customers/me/history": { tag: "Customers", summary: "Everything for the history screen", returns: "CustomerHistoryItemDTO[]", who: "customer" },
+  "GET /customers/me/schedules": { tag: "Customers", summary: "My repeating requests", returns: "RecurringScheduleDTO[]", who: "customer", notes: "Create one by sending repeat: \"WEEKLY\" or \"BIWEEKLY\" with POST /requests." },
+  "DELETE /customers/me/schedules/:scheduleId": { tag: "Customers", summary: "Stop a repeating request", returns: "RecurringScheduleDTO", who: "customer", notes: "Visits that were already booked stay booked." },
+  "GET /customers/me/past-workers": { tag: "Customers", summary: "People who've helped me before", returns: "PastWorkerDTO[]", who: "customer", notes: "For a \"Book James again\" button: pass the worker's id as preferredWorkerId when creating a request." },
 
   "POST /customers/me/caregivers/invite": { tag: "Caregivers", summary: "Make an invite code for a family member", returns: "CaregiverInviteDTO", who: "customer", status: 201, notes: "6 characters, good for 24 hours, works once." },
   "GET /customers/me/caregivers": { tag: "Caregivers", summary: "Who's linked to me", returns: "CaregiverLinkDTO[]", who: "customer" },
@@ -76,7 +79,7 @@ const ROUTE_DOCS: Record<keyof ApiResponses, RouteDoc> = {
   "POST /jobs/offers/:offerId/decline": { tag: "Jobs", summary: "Decline a job", returns: "JobOfferDTO", who: "worker" },
   "GET /jobs": { tag: "Jobs", summary: "My jobs (admins get all)", returns: "JobDetailDTO[]", who: "customer, worker, admin", query: statusQuery(JOB_STATUSES) },
   "GET /jobs/:jobId": { tag: "Jobs", summary: "Get a job", returns: "JobDetailDTO", who: "the job's customer or worker, admin", notes: "arrivalCode is only included for the customer and admins." },
-  "PATCH /jobs/:jobId/status": { tag: "Jobs", summary: "Move a job to its next status", returns: "JobDetailDTO", who: "the job's customer or worker, admin", body: updateJobStatusSchema, notes: "ACCEPTED → EN_ROUTE → ARRIVED → IN_PROGRESS → COMPLETED. Workers need the customer's arrivalCode to mark ARRIVED." },
+  "PATCH /jobs/:jobId/status": { tag: "Jobs", summary: "Move a job to its next status", returns: "JobDetailDTO", who: "the job's customer or worker, admin", body: updateJobStatusSchema, notes: "ACCEPTED -> EN_ROUTE -> ARRIVED -> IN_PROGRESS -> COMPLETED. Workers need the customer's arrivalCode to mark ARRIVED." },
   "GET /jobs/:jobId/messages": { tag: "Jobs", summary: "Chat messages", returns: "JobMessageDTO[]", who: "the job's customer or worker, admin" },
   "POST /jobs/:jobId/messages": { tag: "Jobs", summary: "Send a chat message", returns: "JobMessageDTO", who: "the job's customer or worker", body: sendJobMessageSchema, status: 201 },
   "POST /jobs/:jobId/rating": { tag: "Jobs", summary: "Rate a completed job", returns: "RatingDTO", who: "the job's customer", body: createRatingSchema, status: 201 },

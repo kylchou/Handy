@@ -13,6 +13,7 @@ import {
   messages,
   notifications,
   ratings,
+  recurringSchedules,
   serviceCategories,
   serviceRequests,
   users,
@@ -35,7 +36,7 @@ export const SERVICE_CATEGORY_SEED: Array<typeof serviceCategories.$inferInsert>
   { id: "MOVING_ASSISTANCE", name: "Moving help", description: "Moving furniture and heavy items", requiresQualification: true, basePriceCents: 3500 },
 ];
 
-// Demo area: around Georgia Tech, Atlanta. 1 mile ≈ 0.0145° latitude.
+// Demo area: around Georgia Tech, Atlanta. 1 mile is about 0.0145 degrees of latitude.
 const HOME = { lat: 33.7756, lng: -84.3963 };
 const milesNorth = (mi: number) => HOME.lat + mi * 0.01449;
 const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
@@ -93,7 +94,7 @@ const DEMO_WORKERS: DemoWorker[] = [
     services: [["CLEANING", "BASIC"], ["MOVING_ASSISTANCE", "BASIC"]], days: WEEKDAYS, hours: ["08:00", "17:00"],
   },
   {
-    firstName: "Linda", lastName: "Brooks", bio: "New to the platform — background check in progress.",
+    firstName: "Linda", lastName: "Brooks", bio: "New to Handy, background check still in progress.",
     rating: 0, ratingCount: 0, completedJobs: 0, milesAway: 1.2, serviceRadius: 10, verificationStatus: "PENDING",
     services: [["COMPANIONSHIP", "BASIC"], ["TRANSPORTATION", "BASIC"]], days: EVERY_DAY, hours: ["09:00", "17:00"],
   },
@@ -195,7 +196,7 @@ export async function isSeeded(db: Database): Promise<boolean> {
 /** Inserts service categories and demo accounts. No-op when already seeded. */
 export async function seed(db: Database, log: (msg: string) => void = console.log): Promise<void> {
   if (await isSeeded(db)) {
-    log("Database already seeded — skipping.");
+    log("Database already seeded, skipping.");
     return;
   }
   const passwordHash = await hashPassword(DEMO_PASSWORD);
@@ -237,6 +238,7 @@ export async function resetDemoData(db: Database): Promise<void> {
     await tx.delete(jobs);
     await tx.delete(jobOffers);
     await tx.delete(serviceRequests);
+    await tx.delete(recurringSchedules);
     await tx.delete(messages);
     await tx.delete(conversations);
     await tx.delete(caregiverInvites);

@@ -68,6 +68,20 @@ export const jobsRepo = {
       .returning({ id: jobs.id });
     return rows.length > 0;
   },
+  /** A customer's completed jobs, newest first. */
+  async completedForCustomer(db: Database, customerId: string) {
+    return db
+      .select({
+        jobId: jobs.id,
+        workerId: jobs.workerId,
+        completedAt: jobs.completedAt,
+        serviceCategoryId: serviceRequests.serviceCategoryId,
+      })
+      .from(jobs)
+      .innerJoin(serviceRequests, eq(serviceRequests.id, jobs.requestId))
+      .where(and(eq(serviceRequests.customerId, customerId), eq(jobs.status, "COMPLETED")))
+      .orderBy(desc(jobs.completedAt));
+  },
   async list(db: Database, filter: { workerId?: string; customerId?: string; status?: JobStatus } = {}) {
     const where: SQL[] = [];
     if (filter.workerId) where.push(eq(jobs.workerId, filter.workerId));

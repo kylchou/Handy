@@ -1,6 +1,7 @@
 import type {
   CustomerHistoryItemDTO,
   CustomerProfileDTO,
+  PastWorkerDTO,
   RatingDTO,
   UpdateAvailabilityBody,
   UpdateCustomerProfileBody,
@@ -14,6 +15,7 @@ import type {
 } from "@handy/contracts";
 import { updateQualificationsSchema } from "@handy/contracts";
 import { notFound } from "../lib/errors";
+import { fillCoordinates } from "../lib/geocoder";
 import { categoriesRepo } from "../repositories/categories";
 import { jobsRepo, ratingsRepo } from "../repositories/jobs";
 import { requestsRepo } from "../repositories/requests";
@@ -22,6 +24,7 @@ import { workersRepo } from "../repositories/workers";
 import type { Actor, ServiceContext } from "./context";
 import { toCustomerProfileDTO, toRatingDTO, toUserDTO, toWorkerProfileDTO } from "./mappers";
 import { workerPublicViews } from "./views";
+import { workerHistoryFor } from "./worker-history";
 
 export class ProfileService {
   constructor(private ctx: ServiceContext) {}
@@ -40,7 +43,8 @@ export class ProfileService {
   }
 
   async updateCustomerProfile(actor: Actor, body: UpdateCustomerProfileBody): Promise<CustomerProfileDTO> {
-    return toCustomerProfileDTO(await customerProfilesRepo.upsert(this.ctx.db, actor.id, body));
+    const withCoords = await fillCoordinates(this.ctx.geocoder, body);
+    return toCustomerProfileDTO(await customerProfilesRepo.upsert(this.ctx.db, actor.id, withCoords));
   }
 
   /** Newest first. Used by the customer and by their caregivers. */
@@ -82,6 +86,26 @@ export class ProfileService {
     });
   }
 
+  /** Workers who've helped this customer, most recent first. */
+  async pastWorkers(customerId: string): Promise<PastWorkerDTO[]> {
+    const history = await workerHistoryFor(this.ctx, customerId);
+    const workers = await workerPublicViews(this.ctx, [...history.keys()]);
+    return [...history.entries()].flatMap(([workerId, h]) => {
+      const worker = workers.get(workerId);
+      return worker
+        ? [
+            {
+              worker,
+              completedJobs: h.completedJobs,
+              lastJobDate: h.lastJobDate.toISOString(),
+              lastServiceCategoryId: h.lastServiceCategoryId,
+              yourLastRating: h.lastRating,
+            },
+          ]
+        : [];
+    });
+  }
+
   // ---------- Workers ----------
 
   async getWorkerProfile(workerId: string): Promise<WorkerProfileDTO> {
@@ -95,7 +119,7 @@ export class ProfileService {
   }
 
   async updateWorkerProfile(actor: Actor, body: UpdateWorkerProfileBody): Promise<WorkerProfileDTO> {
-    await workersRepo.updateProfile(this.ctx.db, actor.id, body);
+    await workersRepo.updateProfile(this.ctx.db, actor.id, await fillCoordinates(this.ctx.geocoder, body));
     return this.getWorkerProfile(actor.id);
   }
 

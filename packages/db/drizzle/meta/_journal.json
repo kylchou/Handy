@@ -43,6 +43,20 @@
       "when": 1790402531232,
       "tag": "0005_chat_flags",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790403195348,
+      "tag": "0006_preferred_worker",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1790404323789,
+      "tag": "0007_recurring_requests",
+      "breakpoints": true
     }
   ]
 }
