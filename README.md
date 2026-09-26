@@ -23,7 +23,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Anything that sounds like an emergency is blocked and the user is told to call 911
 - Workers only see a general area until they accept, then they get the full address
 - Customer and worker chat, so nobody has to share phone numbers
-- Live updates over SSE or WebSockets, plus saved notifications
+- Live updates over SSE or WebSockets, plus saved notifications. If the connection drops, it catches up on what it missed when it reconnects.
 - Ratings, job history, worker earnings, and admin stats
 - A typed API client in `@handy/contracts` for the frontends
 - A demo reset so we can start the demo fresh for each judge

@@ -1,5 +1,5 @@
 import type { FastifyBaseLogger } from "fastify";
-import type { AIService, MatchingService, RealtimeEvent, UserRole } from "@handy/contracts";
+import type { AIService, MatchingService, NewRealtimeEvent, RealtimeEvent, UserRole } from "@handy/contracts";
 import type { Database } from "@handy/db";
 import type { AppConfig } from "../config";
 import { notificationsRepo } from "../repositories/notifications";
@@ -28,7 +28,7 @@ export class Notifier {
   constructor(private ctx: ServiceContext) {}
 
   emit<T extends RealtimeEvent["type"]>(userIds: string[], type: T, data: EventOf<T>["data"]): void {
-    this.ctx.bus.publish(userIds, { type, at: new Date().toISOString(), data } as RealtimeEvent);
+    this.ctx.bus.publish(userIds, { type, at: new Date().toISOString(), data } as NewRealtimeEvent);
   }
 
   async notify(userId: string, type: string, title: string, body: string | null = null, data: Record<string, unknown> = {}) {

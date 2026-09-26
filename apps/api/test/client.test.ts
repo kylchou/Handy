@@ -104,6 +104,121 @@ describe("API client", () => {
     await expect(api.categories.list()).rejects.toMatchObject({ status: 0, code: "NETWORK_ERROR" });
   });
 
+  describe("missed live events", () => {
+    async function newRequest(api: ApiClient) {
+      const { conversation } = await api.conversations.create();
+      const { request } = await api.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "ERRANDS",
+        description: "Pick up prescriptions",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 2),
+        requestedStartTime: "12:00",
+      });
+      return request.id;
+    }
+
+    /** Opens a raw WebSocket and collects parsed messages. */
+    function openSocket(url: string) {
+      const messages: Array<{ type: string; id?: string; replayed?: number; data?: { requestId?: string } }> = [];
+      const ws = new WebSocket(url);
+      ws.onmessage = (e) => messages.push(JSON.parse(String(e.data)));
+      const opened = new Promise<void>((r) => (ws.onopen = () => r()));
+      return { ws, messages, opened };
+    }
+    const until = async (check: () => boolean) => {
+      for (let i = 0; i < 50 && !check(); i++) await new Promise((r) => setTimeout(r, 20));
+    };
+
+    it("replays what a WebSocket client missed while disconnected", async () => {
+      const margaret = client();
+      await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+
+      const first = openSocket(margaret.realtime.websocketUrl());
+      await first.opened;
+      const requestId = await newRequest(margaret);
+      await until(() => first.messages.some((m) => m.type === "REQUEST_CREATED"));
+      const lastSeen = first.messages.findLast((m) => m.id)!.id!;
+      first.ws.close();
+
+      // This happens while nobody is connected.
+      await margaret.requests.cancel(requestId);
+
+      const second = openSocket(margaret.realtime.websocketUrl(lastSeen));
+      await until(() => second.messages.length >= 2);
+      second.ws.close();
+      expect(second.messages[0]).toMatchObject({ type: "CONNECTED", replayed: 1 });
+      expect(second.messages[1]).toMatchObject({ type: "REQUEST_CANCELLED", data: { requestId } });
+    });
+
+    it("replays over SSE using the Last-Event-ID header", async () => {
+      const margaret = client();
+      await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+      const before = openSocket(margaret.realtime.websocketUrl());
+      await before.opened;
+      const requestId = await newRequest(margaret);
+      await until(() => before.messages.some((m) => m.type === "REQUEST_CREATED"));
+      const lastSeen = before.messages.findLast((m) => m.id)!.id!;
+      before.ws.close();
+      await margaret.requests.cancel(requestId);
+
+      const abort = new AbortController();
+      const res = await fetch(margaret.realtime.eventsUrl(), { headers: { "Last-Event-ID": lastSeen }, signal: abort.signal });
+      const reader = res.body!.getReader();
+      let text = "";
+      while (!text.includes("REQUEST_CANCELLED")) text += new TextDecoder().decode((await reader.read()).value);
+      abort.abort();
+      expect(text).toContain('"replayed":1');
+      expect(text).toMatch(/id: \w+:\d+\ndata: \{[^\n]*"REQUEST_CANCELLED"/);
+    });
+
+    it("asks the client to resync when the gap can't be replayed", async () => {
+      const margaret = client();
+      await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+      const s = openSocket(margaret.realtime.websocketUrl("deadbeef:5"));
+      await until(() => s.messages.length >= 2);
+      s.ws.close();
+      expect(s.messages.map((m) => m.type)).toEqual(["CONNECTED", "RESYNC"]);
+    });
+
+    it("the client reconnects by itself and doesn't lose events", async () => {
+      const margaret = client();
+      await margaret.auth.login({ email: "margaret@handy.demo", password: DEMO_PASSWORD });
+
+      // Wrap the global WebSocket so the test can see (and drop) the client's connections.
+      const RealWS = globalThis.WebSocket;
+      const sockets: WebSocket[] = [];
+      const urls: string[] = [];
+      globalThis.WebSocket = class extends RealWS {
+        constructor(url: string | URL) {
+          super(url);
+          urls.push(String(url));
+          sockets.push(this);
+        }
+      } as typeof WebSocket;
+
+      const events: RealtimeEvent[] = [];
+      let opens = 0;
+      const stop = margaret.realtime.subscribe((e) => events.push(e), { transport: "ws", onOpen: () => opens++ });
+      try {
+        await until(() => opens === 1);
+        const requestId = await newRequest(margaret);
+        await until(() => events.some((e) => e.type === "REQUEST_CREATED"));
+
+        sockets[0]!.close(); // connection drops
+        await margaret.requests.cancel(requestId); // happens while it's down
+
+        await until(() => events.some((e) => e.type === "REQUEST_CANCELLED"));
+        expect(opens).toBe(2);
+        expect(urls[1]).toContain("lastEventId=");
+        expect(events.filter((e) => e.type === "REQUEST_CANCELLED")).toHaveLength(1);
+      } finally {
+        stop();
+        globalThis.WebSocket = RealWS;
+      }
+    });
+  });
+
   it("resets the demo data without logging anyone out", async () => {
     const admin = client();
     const margaret = client();

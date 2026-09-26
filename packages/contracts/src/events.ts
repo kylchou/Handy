@@ -32,6 +32,11 @@ export const RealtimeEventType = {
 export type RealtimeEventType = (typeof RealtimeEventType)[keyof typeof RealtimeEventType];
 
 interface EventBase<T extends RealtimeEventType, D> {
+  /**
+   * Unique per event. Reconnect with the last id you saw (SSE does this for
+   * you via Last-Event-ID; for WebSocket pass ?lastEventId=) to get what you missed.
+   */
+  id: string;
   type: T;
   /** ISO timestamp. */
   at: string;
@@ -63,4 +68,20 @@ export type RealtimeEvent =
 export interface RealtimeHello {
   type: "CONNECTED";
   userId: string;
+  /** How many missed events are being re-sent right after this message. */
+  replayed: number;
 }
+
+/**
+ * Sent after CONNECTED when missed events can't be replayed (too many, or the
+ * server restarted). Refetch whatever is on screen.
+ */
+export interface RealtimeResync {
+  type: "RESYNC";
+}
+
+/** Any message a realtime connection can receive. */
+export type RealtimeMessage = RealtimeEvent | RealtimeHello | RealtimeResync;
+
+/** A RealtimeEvent before the server assigns its id. */
+export type NewRealtimeEvent = RealtimeEvent extends infer E ? (E extends RealtimeEvent ? Omit<E, "id"> : never) : never;

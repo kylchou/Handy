@@ -15,7 +15,7 @@ import type {
 } from "./api";
 import { API_PREFIX } from "./api";
 import type { JobStatus, ServiceRequestStatus, VerificationStatus } from "./enums";
-import type { RealtimeEvent } from "./events";
+import type { RealtimeEvent, RealtimeMessage } from "./events";
 
 /**
  * Typed client for the Handy API. Works in the browser and in Node 20+.
@@ -216,29 +216,68 @@ export function createApiClient(options: ApiClientOptions) {
     },
 
     realtime: {
-      eventsUrl: () => `${base}/events?token=${encodeURIComponent(token ?? "")}`,
-      websocketUrl: () => `${base.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token ?? "")}`,
+      eventsUrl: (lastEventId?: string) =>
+        `${base}/events?token=${encodeURIComponent(token ?? "")}${lastEventId ? `&lastEventId=${encodeURIComponent(lastEventId)}` : ""}`,
+      websocketUrl: (lastEventId?: string) =>
+        `${base.replace(/^http/, "ws")}/ws?token=${encodeURIComponent(token ?? "")}${lastEventId ? `&lastEventId=${encodeURIComponent(lastEventId)}` : ""}`,
       /**
-       * Calls `onEvent` for every live event for the logged-in user. Uses SSE by
-       * default (the browser reconnects automatically); pass `transport: "ws"`
-       * for WebSocket. Returns a function that closes the connection.
+       * Calls `onEvent` for every live event for the logged-in user and returns
+       * a function that disconnects. Uses SSE by default; pass `transport: "ws"`
+       * for WebSocket. Both reconnect on their own and replay anything missed
+       * while disconnected. If the gap can't be replayed, `onResync` is called:
+       * refetch whatever is on screen.
        */
-      subscribe(onEvent: (event: RealtimeEvent) => void, opts: { transport?: "sse" | "ws"; onOpen?: () => void } = {}): () => void {
+      subscribe(
+        onEvent: (event: RealtimeEvent) => void,
+        opts: { transport?: "sse" | "ws"; onOpen?: () => void; onResync?: () => void } = {},
+      ): () => void {
+        let lastEventId: string | undefined;
         const handle = (raw: string) => {
-          const msg = JSON.parse(raw) as RealtimeEvent | { type: "CONNECTED" };
+          const msg = JSON.parse(raw) as RealtimeMessage;
           if (msg.type === "CONNECTED") opts.onOpen?.();
-          else onEvent(msg as RealtimeEvent);
+          else if (msg.type === "RESYNC") opts.onResync?.();
+          else {
+            lastEventId = msg.id;
+            onEvent(msg);
+          }
         };
         const g = globalThis as unknown as Record<string, unknown>;
+        const timers = globalThis as unknown as {
+          setTimeout(cb: () => void, ms: number): unknown;
+          clearTimeout(handle: unknown): void;
+        };
+
         if (opts.transport === "ws") {
           const WS = g.WebSocket as new (url: string) => {
             onmessage: ((e: { data: unknown }) => void) | null;
+            onclose: ((e: { code: number }) => void) | null;
             close(): void;
           };
-          const socket = new WS(this.websocketUrl());
-          socket.onmessage = (e) => handle(String(e.data));
-          return () => socket.close();
+          let stopped = false;
+          let attempt = 0;
+          let socket: InstanceType<typeof WS> | undefined;
+          let retry: unknown;
+          const connect = () => {
+            socket = new WS(this.websocketUrl(lastEventId));
+            socket.onmessage = (e) => {
+              attempt = 0;
+              handle(String(e.data));
+            };
+            socket.onclose = (e) => {
+              // 4401 = bad token; reconnecting won't help.
+              if (stopped || e.code === 4401) return;
+              retry = timers.setTimeout(connect, Math.min(10_000, 500 * 2 ** attempt++));
+            };
+          };
+          connect();
+          return () => {
+            stopped = true;
+            timers.clearTimeout(retry);
+            socket?.close();
+          };
         }
+
+        // EventSource reconnects by itself and sends Last-Event-ID for us.
         const ES = g.EventSource as new (url: string) => {
           onmessage: ((e: { data: string }) => void) | null;
           close(): void;

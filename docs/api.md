@@ -36,7 +36,7 @@ A few things to know:
 
 - Login and signup save the token, logout clears it. Use `onTokenChange` to keep it in localStorage.
 - Any error throws an `ApiRequestError` with `status`, `code`, and `message`. If the server can't be reached you get `code: "NETWORK_ERROR"` and `status: 0`.
-- `realtime.subscribe` uses SSE by default. Pass `{ transport: "ws" }` for WebSocket.
+- `realtime.subscribe` uses SSE by default. Pass `{ transport: "ws" }` for WebSocket. Either way it reconnects by itself and catches up on anything it missed. Pass `onResync` to refetch your screen in the rare case it can't catch up.
 - The method names follow the endpoint tables below, e.g. `api.requests.cancel(id)` is `POST /requests/:id/cancel`.
 
 ## Basics
@@ -161,7 +161,14 @@ Pass the token in the URL since you can't set headers on these. Use whichever on
 - **SSE:** `new EventSource("http://localhost:4000/api/v1/events?token=" + token)`, then use `onmessage`. Each `event.data` is JSON.
 - **WebSocket:** `new WebSocket("ws://localhost:4000/api/v1/ws?token=" + token)`. Each message is JSON. Bad token closes with code 4401.
 
-First message is `{ type: "CONNECTED", userId }`. After that every event is `{ type, at, data }`. Types are in [events.ts](../packages/contracts/src/events.ts).
+First message is `{ type: "CONNECTED", userId, replayed }`. After that every event is `{ id, type, at, data }`. Types are in [events.ts](../packages/contracts/src/events.ts).
+
+**Missed events.** Every event has an `id`, and the server keeps the last 1000. If a connection drops, reconnect with the last id you saw and you'll get everything you missed (in order) right after `CONNECTED`, then live events like normal:
+
+- SSE: the browser does this for you with the `Last-Event-ID` header.
+- WebSocket: add `&lastEventId=<id>` to the URL.
+
+If the gap can't be filled (the server restarted, or you were gone for a really long time), you get `{ type: "RESYNC" }` after `CONNECTED`. That means refetch whatever's on screen. The API client handles all of this, so you only need to care if you're connecting yourself.
 
 | Event | Sent to | When |
 | --- | --- | --- |
