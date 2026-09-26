@@ -17,6 +17,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "~0.128.0",
     "@handy/contracts": "workspace:*",
+    "openai": "~7.23.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

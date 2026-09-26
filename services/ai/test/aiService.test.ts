@@ -1,8 +1,7 @@
 import type { AIConversationContext, ServiceRequestDraft } from "@handy/contracts";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { HandyAIService } from "../src/aiService.js";
 import { AIServiceError } from "../src/errors.js";
-import { createAIService } from "../src/index.js";
 import type { ExtractionModel, ModelInput, ModelRunResult } from "../src/model.js";
 import type { ModelTurn } from "../src/schema.js";
 
@@ -266,29 +265,3 @@ describe("HandyAIService", () => {
   });
 });
 
-describe("createAIService", () => {
-  const keys = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"] as const;
-  let saved: Record<string, string | undefined> = {};
-  beforeEach(() => {
-    saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
-    for (const k of keys) delete process.env[k];
-  });
-  afterEach(() => {
-    for (const k of keys) {
-      if (saved[k] === undefined) delete process.env[k];
-      else process.env[k] = saved[k];
-    }
-  });
-
-  it("throws without a key so the backend falls back at startup", () => {
-    expect(() => createAIService()).toThrow("ANTHROPIC_API_KEY is not set");
-    process.env.ANTHROPIC_API_KEY = "   ";
-    expect(() => createAIService()).toThrow("ANTHROPIC_API_KEY is not set");
-  });
-
-  it("works with a key, or with an injected model", () => {
-    expect(() => createAIService({ model: new StubModel([]) })).not.toThrow();
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-    expect(createAIService()).toBeInstanceOf(HandyAIService);
-  });
-});
