@@ -289,6 +289,44 @@ describe("safety and re-matching", () => {
     expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "tom")).body.some((o) => o.requestId === requestId)).toBe(false);
   });
 
+  it("stops a worker from double-booking themselves", async () => {
+    const day = addDays(todayIn("America/New_York"), 4);
+    const submit = async (description: string) => {
+      const conv = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+      const r = await call<CreateServiceRequestResponse>("POST", "/requests", "margaret", {
+        conversationId: conv.id,
+        serviceCategoryId: "MOVING_ASSISTANCE",
+        description,
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: day,
+        requestedStartTime: "14:00",
+      });
+      return r.body.request.id;
+    };
+    const first = await submit("Move a dresser");
+    const second = await submit("Move a bookshelf");
+    const jamesOffers = (await call<JobOfferDTO[]>("GET", "/jobs/available", "james")).body;
+    const offerFor = (id: string) => jamesOffers.find((o) => o.requestId === id)!;
+    expect(offerFor(first)).toBeDefined();
+    expect(offerFor(second)).toBeDefined();
+
+    expect((await call("POST", `/jobs/offers/${offerFor(first).id}/accept`, "james")).status).toBe(200);
+
+    // His overlapping offer is pulled, and Tom is still offered the second job.
+    expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.some((o) => o.requestId === second)).toBe(false);
+    expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "tom")).body.some((o) => o.requestId === second)).toBe(true);
+    const late = await call<{ error: { code: string } }>("POST", `/jobs/offers/${offerFor(second).id}/accept`, "james");
+    expect(late.status).toBe(409);
+
+    // Even if an overlapping offer slips through (e.g. two taps at once), the accept is refused.
+    const { offersRepo } = await import("../src/repositories/offers");
+    const third = await submit("Move a mattress");
+    const [sneaky] = await offersRepo.createMany(handle.db, [{ requestId: third, workerId: ids.james!, score: 50 }]);
+    const conflict = await call<{ error: { code: string } }>("POST", `/jobs/offers/${sneaky!.id}/accept`, "james");
+    expect(conflict.status).toBe(409);
+    expect(conflict.body.error.code).toBe("SCHEDULE_CONFLICT");
+  });
+
   it("does not offer jobs to unverified workers until an admin verifies them", async () => {
     const workers = await call<Array<{ id: string; firstName: string }>>("GET", "/admin/workers", "admin");
     const linda = workers.body.find((w) => w.firstName === "Linda")!;

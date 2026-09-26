@@ -50,6 +50,7 @@ export type ApiErrorCode =
   | "REQUEST_INCOMPLETE"
   | "POTENTIAL_EMERGENCY"
   | "JOB_NO_LONGER_AVAILABLE"
+  | "SCHEDULE_CONFLICT"
   | "INTERNAL_ERROR";
 
 /** Body of every non-2xx response. */

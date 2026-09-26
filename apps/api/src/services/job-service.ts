@@ -10,7 +10,7 @@ import {
 } from "@handy/contracts";
 import type { JobRow, ServiceRequestRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
-import { addDays, formatTime12h, todayIn } from "../lib/time";
+import { addDays, formatTime12h, todayIn, windowsOverlap } from "../lib/time";
 import { jobMessagesRepo, jobsRepo, ratingsRepo } from "../repositories/jobs";
 import { offersRepo } from "../repositories/offers";
 import { requestsRepo } from "../repositories/requests";
@@ -60,31 +60,53 @@ export class JobService {
   /** First valid worker to accept gets the job; everyone else's offer is withdrawn. */
   async accept(actor: Actor, offerId: string): Promise<JobDetailDTO> {
     const { db } = this.ctx;
-    let result: { job: JobRow; request: ServiceRequestRow; withdrawn: Array<{ id: string; workerId: string }> };
+    let result: {
+      job: JobRow;
+      request: ServiceRequestRow;
+      withdrawn: Array<{ id: string; workerId: string }>;
+      ownConflicts: Array<{ id: string; requestId: string }>;
+    };
     try {
       result = await db.transaction(async (tx) => {
         const offer = await offersRepo.get(tx, offerId);
         if (!offer || offer.workerId !== actor.id) throw notFound("Job offer");
+        // Lock the worker first so two accepts from the same worker can't both pass the overlap check.
+        await workersRepo.lockProfile(tx, actor.id);
         const request = await requestsRepo.getForUpdate(tx, offer.requestId);
         const freshOffer = await offersRepo.get(tx, offerId);
         if (!request || request.status !== "SEARCHING" || freshOffer?.status !== "PENDING") {
           throw new ApiError("JOB_NO_LONGER_AVAILABLE", "Sorry, this job is no longer available.");
         }
+        const overlaps = (w: { date: string; startTime: string; endTime: string }) =>
+          w.date === request.requestedDate && windowsOverlap(w.startTime, w.endTime, request.requestedStartTime, request.requestedEndTime);
+        if ((await workersRepo.bookedWindows(tx, [actor.id])).some(overlaps)) {
+          throw new ApiError("SCHEDULE_CONFLICT", "You already have a job at that time.");
+        }
+
         const now = new Date();
         const job = await jobsRepo.create(tx, { requestId: request.id, workerId: actor.id, status: "ACCEPTED", acceptedAt: now });
         await offersRepo.update(tx, offerId, { status: "ACCEPTED", respondedAt: now });
         const withdrawn = await offersRepo.withdrawPending(tx, request.id, offerId);
         const updated = await requestsRepo.update(tx, request.id, { status: "MATCHED" });
-        return { job, request: updated, withdrawn };
+        // The worker can't take other jobs at the same time anymore, so pull those offers.
+        const conflicting = (await offersRepo.pendingWithWindows(tx, actor.id)).filter(overlaps);
+        const ownConflicts = await offersRepo.withdraw(tx, conflicting.map((o) => o.id));
+        return { job, request: updated, withdrawn, ownConflicts };
       });
     } catch (err) {
       if (isUniqueViolation(err)) throw new ApiError("JOB_NO_LONGER_AVAILABLE", "Sorry, this job is no longer available.");
       throw err;
     }
 
-    const { job, request, withdrawn } = result;
+    const { job, request, withdrawn, ownConflicts } = result;
     const detail = await jobDetail(this.ctx, job);
     for (const o of withdrawn) this.notifier.emit([o.workerId], "JOB_NO_LONGER_AVAILABLE", { requestId: request.id, offerId: o.id });
+    for (const o of ownConflicts) {
+      this.notifier.emit([actor.id], "JOB_NO_LONGER_AVAILABLE", { requestId: o.requestId, offerId: o.id });
+      // If this worker was the only one holding that request, find someone else.
+      const stillPending = (await offersRepo.byRequest(this.ctx.db, o.requestId)).some((x) => x.status === "PENDING");
+      if (!stillPending) await this.matching.broadcast(o.requestId);
+    }
     this.notifier.emit([request.customerId, actor.id], "JOB_ACCEPTED", {
       jobId: job.id,
       requestId: request.id,

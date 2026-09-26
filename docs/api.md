@@ -66,7 +66,7 @@ Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`.
 | Endpoint | Who | Notes |
 | --- | --- | --- |
 | `GET /jobs/available` | worker | Jobs offered to this worker. Only shows a general area, the full address shows up after accepting. |
-| `POST /jobs/offers/:offerId/accept` | worker | First to accept gets it. Anyone after that gets 409 `JOB_NO_LONGER_AVAILABLE`. |
+| `POST /jobs/offers/:offerId/accept` | worker | First to accept gets it. Anyone after that gets 409 `JOB_NO_LONGER_AVAILABLE`. If the worker already has a job at an overlapping time it's 409 `SCHEDULE_CONFLICT`. Accepting also removes the worker's other offers that overlap with it. |
 | `POST /jobs/offers/:offerId/decline` | worker | |
 | `GET /jobs` | logged in | Your jobs (admins get all). Optional `?status=`. |
 | `GET /jobs/:jobId` | job's customer/worker, admin | Job + request + worker profile + customer name + distance + rating |
