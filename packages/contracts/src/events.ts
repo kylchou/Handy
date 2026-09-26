@@ -9,6 +9,8 @@ import type { JobMessageDTO, JobOfferDTO, NotificationDTO } from "./dto";
 export const RealtimeEventType = {
   REQUEST_CREATED: "REQUEST_CREATED",
   REQUEST_CANCELLED: "REQUEST_CANCELLED",
+  /** Sent to the customer: nobody accepted before the requested time passed. */
+  REQUEST_EXPIRED: "REQUEST_EXPIRED",
   /** Sent to a worker: a new job is available to them. */
   JOB_OFFERED: "JOB_OFFERED",
   /** Sent to the customer: matching found workers and notified them. */
@@ -40,6 +42,7 @@ type JobRef = { jobId: string; requestId: string; status: JobStatus };
 export type RealtimeEvent =
   | EventBase<"REQUEST_CREATED", RequestRef>
   | EventBase<"REQUEST_CANCELLED", RequestRef>
+  | EventBase<"REQUEST_EXPIRED", RequestRef>
   | EventBase<"JOB_OFFERED", { offer: JobOfferDTO }>
   | EventBase<"WORKER_MATCHED", RequestRef & { notifiedWorkerCount: number }>
   | EventBase<"JOB_ACCEPTED", JobRef & { workerId: string }>

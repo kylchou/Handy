@@ -37,6 +37,8 @@ export const ServiceRequestStatus = {
   MATCHED: "MATCHED",
   COMPLETED: "COMPLETED",
   CANCELLED: "CANCELLED",
+  /** Nobody accepted before the requested time window ended. */
+  EXPIRED: "EXPIRED",
 } as const;
 export type ServiceRequestStatus = (typeof ServiceRequestStatus)[keyof typeof ServiceRequestStatus];
 export const SERVICE_REQUEST_STATUSES = values(ServiceRequestStatus);

@@ -18,6 +18,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Only verified workers get jobs
 - Workers can't accept two jobs at the same time
 - Offers expire after 5 minutes if the worker doesn't respond, and the job goes to the next person
+- If nobody takes a request before its time passes, it's closed and the customer is asked to pick another time
 - If a worker cancels, the job goes back out to other workers
 - Anything that sounds like an emergency is blocked and the user is told to call 911
 - Workers only see a general area until they accept, then they get the full address

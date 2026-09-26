@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, lt, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, lte, or, sql, type SQL } from "drizzle-orm";
 import { serviceRequests, type Database, type ServiceRequestRow } from "@handy/db";
 import type { ServiceRequestStatus } from "@handy/contracts";
 
@@ -37,6 +37,21 @@ export const requestsRepo = {
       .from(serviceRequests)
       .where(and(...where))
       .orderBy(desc(serviceRequests.createdAt));
+  },
+  /** SEARCHING requests whose time window ended before `today` at `nowTime`. */
+  async searchingPastWindow(db: Database, today: string, nowTime: string) {
+    return db
+      .select()
+      .from(serviceRequests)
+      .where(
+        and(
+          eq(serviceRequests.status, "SEARCHING"),
+          or(
+            lt(serviceRequests.requestedDate, today),
+            and(eq(serviceRequests.requestedDate, today), lte(serviceRequests.requestedEndTime, nowTime)),
+          ),
+        ),
+      );
   },
   /** SEARCHING requests whose last broadcast is older than `before`. */
   async stale(db: Database, before: Date) {

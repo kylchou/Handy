@@ -453,3 +453,54 @@ describe("realtime transport", () => {
     expect(received[1]!.type).toBe("REQUEST_CREATED");
   });
 });
+
+// Runs last: it jumps ahead in time, which expires every request still searching.
+describe("request expiry", () => {
+  it("closes requests nobody accepted before their time passed", async () => {
+    const conv = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    const date = addDays(todayIn("America/New_York"), 6);
+    const submitted = await call<CreateServiceRequestResponse>("POST", "/requests", "margaret", {
+      conversationId: conv.id,
+      serviceCategoryId: "MOVING_ASSISTANCE",
+      description: "Move a rug",
+      location: "123 Main Street, Atlanta, GA",
+      requestedDate: date,
+      requestedStartTime: "10:00",
+    });
+    const requestId = submitted.body.request.id;
+    expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.some((o) => o.requestId === requestId)).toBe(true);
+
+    // The day before, this request is left alone (earlier requests from other tests do expire).
+    await ctx.services.requests.expirePastRequests(new Date(`${addDays(date, -1)}T16:00:00Z`));
+    expect((await call<{ status: string }>("GET", `/requests/${requestId}`, "margaret")).body.status).toBe("SEARCHING");
+
+    const events: RealtimeEvent[] = [];
+    const unsubscribe = ctx.bus.subscribe(ids.margaret!, (e) => events.push(e));
+    // 11:30 AM Eastern on the requested day, after the 10-11 window.
+    expect(await ctx.services.requests.expirePastRequests(new Date(`${date}T15:30:00Z`))).toBeGreaterThanOrEqual(1);
+    unsubscribe();
+
+    const req = await call<{ status: string; pendingOfferCount: number }>("GET", `/requests/${requestId}`, "margaret");
+    expect(req.body.status).toBe("EXPIRED");
+    expect(req.body.pendingOfferCount).toBe(0);
+    expect(events.some((e) => e.type === "REQUEST_EXPIRED" && e.data.requestId === requestId)).toBe(true);
+    expect((await call<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.some((o) => o.requestId === requestId)).toBe(false);
+
+    const notes = await call<Array<{ title: string }>>("GET", "/notifications", "margaret");
+    expect(notes.body[0]!.title).toMatch(/^We couldn't find anyone for your moving help on/);
+    expect((await call("POST", `/requests/${requestId}/cancel`, "margaret")).status).toBe(409);
+  });
+
+  it("rejects dates that already passed", async () => {
+    const conv = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    const res = await call<{ error: { code: string } }>("POST", "/requests", "margaret", {
+      conversationId: conv.id,
+      serviceCategoryId: "ERRANDS",
+      description: "Pick up mail",
+      location: "123 Main Street, Atlanta, GA",
+      requestedDate: addDays(todayIn("America/New_York"), -1),
+      requestedStartTime: "10:00",
+    });
+    expect(res.status).toBe(400);
+  });
+});

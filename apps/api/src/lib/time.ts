@@ -3,6 +3,16 @@ export function todayIn(timezone: string, now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
+/** Current time of day (HH:mm, 24h) in the given IANA timezone. */
+export function nowTimeIn(timezone: string, now = new Date()): string {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
+}
+
+/** "2026-09-27" → "Sunday, September 27" */
+export function friendlyDate(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
+}
+
 /** 0 = Sunday, for a YYYY-MM-DD calendar date. */
 export function dayOfWeek(date: string): number {
   return new Date(`${date}T12:00:00Z`).getUTCDay();

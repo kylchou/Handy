@@ -147,8 +147,9 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
   if (opts.backgroundJobs ?? true) {
     const interval = Math.max(5, Math.min(60, config.matchExpandAfterSeconds / 2, config.matchOfferTtlSeconds / 4)) * 1000;
     const timer = setInterval(() => {
-      services.matching
-        .expireOffers()
+      services.requests
+        .expirePastRequests()
+        .then(() => services.matching.expireOffers())
         .then(() => services.matching.expandStale())
         .catch((err) => app.log.error({ err }, "matching sweep failed"));
     }, interval);

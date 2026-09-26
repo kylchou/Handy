@@ -59,7 +59,7 @@ If `emergency` isn't null, show it clearly. It tells the user to call 911, and t
 | `POST /requests/:id/cancel` | customer, admin | Only while `SEARCHING` |
 | `GET /requests/:id/matches` | customer, admin | Ranked workers with scores and reasons. Mostly for the admin dashboard. |
 
-Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`.
+Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`, or `EXPIRED` if nobody accepted before the requested time window ended. When a request expires, the customer gets a `REQUEST_EXPIRED` event and a notification asking if they want to pick another time. Requests for a time that's already passed get rejected with a 400.
 
 ### Jobs
 
@@ -130,10 +130,11 @@ First message is `{ type: "CONNECTED", userId }`. After that every event is `{ t
 | `WORKER_MATCHED` | customer | Request was sent to `notifiedWorkerCount` workers |
 | `JOB_OFFERED` | worker | New job for them (`data.offer`) |
 | `JOB_ACCEPTED` | customer, worker | A worker accepted |
-| `JOB_NO_LONGER_AVAILABLE` | offered workers | Someone else accepted, it got cancelled, or the offer expired. Remove it from the list. |
+| `JOB_NO_LONGER_AVAILABLE` | offered workers | Someone else accepted, it got cancelled or expired, or the offer expired. Remove it from the list. |
 | `WORKER_EN_ROUTE`, `WORKER_ARRIVED`, `JOB_STARTED`, `JOB_COMPLETED` | customer, worker | Status changed |
 | `JOB_CANCELLED` | customer, worker | Includes `cancelledBy` |
 | `REQUEST_CANCELLED` | customer | |
+| `REQUEST_EXPIRED` | customer | Nobody accepted before the requested time passed |
 | `MESSAGE_RECEIVED` | both chat users | `data.message` |
 | `RATING_SUBMITTED` | worker | |
 | `NOTIFICATION` | recipient | New saved notification (`data.notification`) |
