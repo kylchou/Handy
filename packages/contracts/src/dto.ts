@@ -397,3 +397,11 @@ export interface PastWorkerDTO {
   /** The customer's most recent rating of this worker, if they left one. */
   yourLastRating: number | null;
 }
+
+/** Demo autopilot: plays the worker's side so one person can demo the whole flow. */
+export interface AutopilotStatusDTO {
+  enabled: boolean;
+  stepSeconds: number;
+  /** Jobs the autopilot accepted and is still moving along. */
+  activeJobIds: string[];
+}

@@ -12,6 +12,7 @@ import type {
   AdminCustomerDTO,
   AdminStatsDTO,
   AdminWorkerDTO,
+  AutopilotStatusDTO,
   CaregiverInviteDTO,
   CaregiverLinkDTO,
   CaregiverPersonDTO,
@@ -312,6 +313,13 @@ export const updateVerificationSchema = z.object({
 });
 export type UpdateVerificationBody = z.infer<typeof updateVerificationSchema>;
 
+export const setAutopilotSchema = z.object({
+  enabled: z.boolean(),
+  /** Seconds between each step (accept, on the way, arrived, started, done). */
+  stepSeconds: z.number().int().min(2).max(60).optional(),
+});
+export type SetAutopilotBody = z.input<typeof setAutopilotSchema>;
+
 // ---------- Response type map ----------
 
 /** Response bodies by endpoint, for typed API clients. */
@@ -362,6 +370,8 @@ export interface ApiResponses {
   "GET /admin/customers": AdminCustomerDTO[];
   "PATCH /admin/workers/:workerId/verification": WorkerProfileDTO;
   "POST /admin/demo/reset": { ok: true };
+  "GET /admin/demo/autopilot": AutopilotStatusDTO;
+  "PUT /admin/demo/autopilot": AutopilotStatusDTO;
   "POST /customers/me/caregivers/invite": CaregiverInviteDTO;
   "GET /customers/me/caregivers": CaregiverLinkDTO[];
   "DELETE /customers/me/caregivers/:caregiverId": void;
