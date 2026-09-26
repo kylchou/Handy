@@ -6,9 +6,12 @@ export interface Guards {
   auth: preHandlerHookHandler[];
   customer: preHandlerHookHandler[];
   worker: preHandlerHookHandler[];
+  caregiver: preHandlerHookHandler[];
   admin: preHandlerHookHandler[];
   customerOrAdmin: preHandlerHookHandler[];
   workerOrAdmin: preHandlerHookHandler[];
+  /** Everyone who takes part in jobs directly (not caregivers). */
+  jobParticipant: preHandlerHookHandler[];
 }
 
 export interface RouteDeps {

@@ -16,6 +16,11 @@ export const workersRepo = {
     const [row] = await db.select().from(workerProfiles).where(eq(workerProfiles.userId, userId));
     return row ?? null;
   },
+  /** Locks the worker's profile row so their accepts are handled one at a time. */
+  async lockProfile(db: Database, userId: string) {
+    const [row] = await db.select().from(workerProfiles).where(eq(workerProfiles.userId, userId)).for("update");
+    return row ?? null;
+  },
   async listProfiles(db: Database, userIds?: string[]) {
     if (userIds && userIds.length === 0) return [];
     const q = db.select().from(workerProfiles);

@@ -9,7 +9,7 @@ import { REQUIRED_REQUEST_FIELDS } from "@handy/contracts";
 import type { ServiceRequestRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
 import { EMERGENCY_GUIDANCE, detectEmergency } from "../lib/safety";
-import { addMinutes, todayIn } from "../lib/time";
+import { addMinutes, friendlyDate, nowTimeIn, todayIn } from "../lib/time";
 import { categoriesRepo } from "../repositories/categories";
 import { conversationsRepo } from "../repositories/conversations";
 import { jobsRepo } from "../repositories/jobs";
@@ -56,11 +56,15 @@ export class RequestService {
     if (missing.length) {
       throw new ApiError("REQUEST_INCOMPLETE", "I still need a little more information before I can send this.", { missingInformation: missing });
     }
-    if (draft.requestedDate! < todayIn(config.timezone)) {
+    const today = todayIn(config.timezone);
+    if (draft.requestedDate! < today) {
       throw new ApiError("VALIDATION_FAILED", "That date has already passed. Please choose today or a later day.");
     }
     if (draft.requestedEndTime! <= draft.requestedStartTime!) {
       throw new ApiError("VALIDATION_FAILED", "The end time needs to be after the start time.");
+    }
+    if (draft.requestedDate === today && draft.requestedEndTime! <= nowTimeIn(config.timezone)) {
+      throw new ApiError("VALIDATION_FAILED", "That time has already passed today. Please choose a later time.");
     }
 
     const [category, profile] = await Promise.all([
@@ -133,6 +137,44 @@ export class RequestService {
     for (const o of withdrawn) this.notifier.emit([o.workerId], "JOB_NO_LONGER_AVAILABLE", { requestId, offerId: o.id });
     this.notifier.emit([request.customerId], "REQUEST_CANCELLED", { requestId, status: request.status });
     return requestView(this.ctx, request);
+  }
+
+  /**
+   * Closes requests nobody accepted before their time window ended, pulls the
+   * open offers, and lets the customer know. Called on an interval.
+   */
+  async expirePastRequests(now = new Date()): Promise<number> {
+    const { db, config } = this.ctx;
+    const due = await requestsRepo.searchingPastWindow(db, todayIn(config.timezone, now), nowTimeIn(config.timezone, now));
+    if (due.length === 0) return 0;
+    const categoryName = new Map((await categoriesRepo.list(db)).map((c) => [c.id, c.name.toLowerCase()]));
+    let count = 0;
+    for (const r of due) {
+      const result = await db.transaction(async (tx) => {
+        const locked = await requestsRepo.getForUpdate(tx, r.id);
+        if (!locked || locked.status !== "SEARCHING") return null; // someone accepted or cancelled in the meantime
+        const request = await requestsRepo.update(tx, r.id, { status: "EXPIRED" });
+        const withdrawn = await offersRepo.withdrawPending(tx, r.id);
+        return { request, withdrawn };
+      });
+      if (!result) continue;
+      count++;
+      for (const o of result.withdrawn) this.notifier.emit([o.workerId], "JOB_NO_LONGER_AVAILABLE", { requestId: r.id, offerId: o.id });
+      this.notifier.emit([r.customerId], "REQUEST_EXPIRED", { requestId: r.id, status: result.request.status });
+      await this.notifier.notifyCustomer(
+        r.customerId,
+        "REQUEST_EXPIRED",
+        `We couldn't find anyone for your ${categoryName.get(r.serviceCategoryId) ?? "request"} on ${friendlyDate(r.requestedDate)}.`,
+        "Would you like to pick another time? Just start a new request and we'll look again.",
+        { requestId: r.id },
+        (who) => ({
+          title: `We couldn't find anyone for ${who}'s ${categoryName.get(r.serviceCategoryId) ?? "request"} on ${friendlyDate(r.requestedDate)}.`,
+          body: "You might want to check in with them about picking another time.",
+        }),
+      );
+    }
+    if (count) this.ctx.log.info({ expired: count }, "expired requests nobody accepted in time");
+    return count;
   }
 
   async matches(actor: Actor, requestId: string): Promise<RequestMatchesResponse> {

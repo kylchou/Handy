@@ -43,10 +43,11 @@ export class ProfileService {
     return toCustomerProfileDTO(await customerProfilesRepo.upsert(this.ctx.db, actor.id, body));
   }
 
-  async customerHistory(actor: Actor): Promise<CustomerHistoryItemDTO[]> {
-    const requests = await requestsRepo.list(this.ctx.db, { customerId: actor.id });
+  /** Newest first. Used by the customer and by their caregivers. */
+  async customerHistory(customerId: string): Promise<CustomerHistoryItemDTO[]> {
+    const requests = await requestsRepo.list(this.ctx.db, { customerId });
     const [jobs, categories] = await Promise.all([
-      jobsRepo.list(this.ctx.db, { customerId: actor.id }),
+      jobsRepo.list(this.ctx.db, { customerId }),
       categoriesRepo.list(this.ctx.db),
     ]);
     // Prefer the live job for each request; fall back to the most recent cancelled one.

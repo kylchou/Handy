@@ -82,7 +82,7 @@ export class MatchingOrchestrator {
     const request = await requestsRepo.get(db, requestId);
     if (!request || request.status !== "SEARCHING") return 0;
 
-    // Workers who already hold, accepted, or declined an offer are skipped; withdrawn ones are eligible again.
+    // Workers who already hold, accepted, declined, or let an offer expire are skipped; withdrawn ones are eligible again.
     const existing = await offersRepo.byRequest(db, requestId);
     const skip = new Set(existing.filter((o) => o.status !== "WITHDRAWN").map((o) => o.workerId));
     const candidates = await this.buildCandidates(request, skip);
@@ -123,6 +123,28 @@ export class MatchingOrchestrator {
     }
     log.info({ requestId, round: request.matchingRound, candidates: candidates.length, offered: created.length }, "broadcast offers");
     return created.length;
+  }
+
+  /** Offers created before this are past their response window. */
+  offerCutoff(now = new Date()): Date {
+    return new Date(now.getTime() - this.ctx.config.matchOfferTtlSeconds * 1000);
+  }
+
+  /**
+   * Expires offers nobody responded to in time, tells those workers, and sends
+   * any request left with no pending offers to the next workers. Called on an interval.
+   */
+  async expireOffers(now = new Date()): Promise<number> {
+    const expired = await offersRepo.expireOlderThan(this.ctx.db, this.offerCutoff(now));
+    for (const o of expired) {
+      this.notifier.emit([o.workerId], "JOB_NO_LONGER_AVAILABLE", { requestId: o.requestId, offerId: o.id });
+    }
+    for (const requestId of new Set(expired.map((o) => o.requestId))) {
+      const stillPending = (await offersRepo.byRequest(this.ctx.db, requestId)).some((o) => o.status === "PENDING");
+      if (!stillPending) await this.broadcast(requestId);
+    }
+    if (expired.length) this.ctx.log.info({ expired: expired.length }, "expired unanswered offers");
+    return expired.length;
   }
 
   /** Re-broadcasts requests that have been searching too long. Called on an interval. */

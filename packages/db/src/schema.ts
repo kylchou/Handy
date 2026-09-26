@@ -230,6 +230,9 @@ export const jobs = pgTable(
     completedAt: ts("completed_at"),
     cancelledAt: ts("cancelled_at"),
     cancelReason: text("cancel_reason"),
+    /** 4-digit code the customer reads to the worker at the door. Only the customer sees it. */
+    arrivalCode: text("arrival_code"),
+    arrivalCodeAttempts: integer("arrival_code_attempts").notNull().default(0),
     finalPriceCents: integer("final_price_cents"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -296,6 +299,32 @@ export const notifications = pgTable(
   (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
 );
 
+/** A customer ↔ caregiver (family member) link. Caregivers can see the customer's jobs and get key updates. */
+export const caregiverLinks = pgTable(
+  "caregiver_links",
+  {
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    caregiverId: uuid("caregiver_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.customerId, t.caregiverId] }), index("caregiver_links_caregiver_idx").on(t.caregiverId)],
+);
+
+/** Short-lived code a customer shares so a family member can link to them. */
+export const caregiverInvites = pgTable("caregiver_invites", {
+  code: text("code").primaryKey(),
+  customerId: uuid("customer_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expiresAt: ts("expires_at").notNull(),
+  usedAt: ts("used_at"),
+  createdAt: createdAt(),
+});
+
 export type UserRow = typeof users.$inferSelect;
 export type CustomerProfileRow = typeof customerProfiles.$inferSelect;
 export type WorkerProfileRow = typeof workerProfiles.$inferSelect;
@@ -310,3 +339,5 @@ export type JobRow = typeof jobs.$inferSelect;
 export type JobMessageRow = typeof jobMessages.$inferSelect;
 export type RatingRow = typeof ratings.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
+export type CaregiverLinkRow = typeof caregiverLinks.$inferSelect;
+export type CaregiverInviteRow = typeof caregiverInvites.$inferSelect;

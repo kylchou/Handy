@@ -10,6 +10,8 @@ function values<T extends Record<string, string>>(obj: T) {
 export const UserRole = {
   CUSTOMER: "CUSTOMER",
   WORKER: "WORKER",
+  /** A family member or caregiver linked to one or more customers (read-only). */
+  CAREGIVER: "CAREGIVER",
   ADMIN: "ADMIN",
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
@@ -37,6 +39,8 @@ export const ServiceRequestStatus = {
   MATCHED: "MATCHED",
   COMPLETED: "COMPLETED",
   CANCELLED: "CANCELLED",
+  /** Nobody accepted before the requested time window ended. */
+  EXPIRED: "EXPIRED",
 } as const;
 export type ServiceRequestStatus = (typeof ServiceRequestStatus)[keyof typeof ServiceRequestStatus];
 export const SERVICE_REQUEST_STATUSES = values(ServiceRequestStatus);
@@ -65,6 +69,8 @@ export const JobOfferStatus = {
   DECLINED: "DECLINED",
   /** Another worker accepted first, or the request was cancelled. */
   WITHDRAWN: "WITHDRAWN",
+  /** The worker didn't respond in time. */
+  EXPIRED: "EXPIRED",
 } as const;
 export type JobOfferStatus = (typeof JobOfferStatus)[keyof typeof JobOfferStatus];
 export const JOB_OFFER_STATUSES = values(JobOfferStatus);

@@ -213,6 +213,12 @@ export interface JobDetailDTO extends JobDTO {
   /** Worker → customer distance in miles, when coordinates are known. */
   distanceMiles: number | null;
   rating: RatingDTO | null;
+  /**
+   * 4-digit code the customer reads to the worker at the door. The worker has
+   * to enter it to mark the job ARRIVED. Only sent to the customer and admins;
+   * always null for the worker.
+   */
+  arrivalCode: string | null;
 }
 
 /** An open job shown on a worker's "Available Jobs Near You" list. */
@@ -236,6 +242,8 @@ export interface JobOfferDTO {
   estimatedPayCents: number;
   customer: CustomerPublicDTO;
   createdAt: string;
+  /** After this the offer can't be accepted and goes to other workers. */
+  expiresAt: string;
 }
 
 export interface JobMessageDTO {
@@ -318,4 +326,28 @@ export interface AdminCustomerDTO extends UserDTO {
 export interface AdminWorkerDTO extends UserDTO {
   profile: WorkerProfileDTO;
   activeJobCount: number;
+}
+
+/** A code a customer gives a family member so they can link as a caregiver. */
+export interface CaregiverInviteDTO {
+  code: string;
+  expiresAt: string;
+}
+
+/** One of the customer's linked caregivers. */
+export interface CaregiverLinkDTO {
+  caregiver: { id: string; firstName: string; lastName: string; email: string };
+  linkedAt: string;
+}
+
+/** Everything on a caregiver's dashboard about one person they help. */
+export interface CaregiverPersonDTO {
+  customer: { id: string; firstName: string; lastName: string; address: string | null };
+  linkedAt: string;
+  /** Jobs a worker has accepted that aren't finished yet. arrivalCode is always null here. */
+  activeJobs: JobDetailDTO[];
+  /** Requests still looking for a worker. */
+  openRequests: ServiceRequestDTO[];
+  /** The 10 most recent requests, newest first. */
+  recentHistory: CustomerHistoryItemDTO[];
 }

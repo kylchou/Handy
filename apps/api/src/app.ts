@@ -10,6 +10,7 @@ import { ApiError } from "./lib/errors";
 import { authenticate, newJti, requireRole, TokenRevocations } from "./middleware/auth";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
+import { caregiverRoutes } from "./routes/caregivers";
 import { categoryRoutes } from "./routes/categories";
 import { conversationRoutes } from "./routes/conversations";
 import { customerRoutes } from "./routes/customers";
@@ -94,9 +95,11 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
     auth: [auth],
     customer: [auth, requireRole("CUSTOMER")],
     worker: [auth, requireRole("WORKER")],
+    caregiver: [auth, requireRole("CAREGIVER")],
     admin: [auth, requireRole("ADMIN")],
     customerOrAdmin: [auth, requireRole("CUSTOMER", "ADMIN")],
     workerOrAdmin: [auth, requireRole("WORKER", "ADMIN")],
+    jobParticipant: [auth, requireRole("CUSTOMER", "WORKER", "ADMIN")],
   };
   const deps: RouteDeps = { services, guards };
 
@@ -139,15 +142,20 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
       await api.register(ratingRoutes, deps);
       await api.register(notificationRoutes, deps);
       await api.register(adminRoutes, deps);
+      await api.register(caregiverRoutes, deps);
       await api.register(realtimeRoutes, { bus, revocations, corsOrigins: config.corsOrigins });
     },
     { prefix: API_PREFIX },
   );
 
   if (opts.backgroundJobs ?? true) {
-    const interval = Math.max(10, Math.min(60, config.matchExpandAfterSeconds / 2)) * 1000;
+    const interval = Math.max(5, Math.min(60, config.matchExpandAfterSeconds / 2, config.matchOfferTtlSeconds / 4)) * 1000;
     const timer = setInterval(() => {
-      services.matching.expandStale().catch((err) => app.log.error({ err }, "expandStale failed"));
+      services.requests
+        .expirePastRequests()
+        .then(() => services.matching.expireOffers())
+        .then(() => services.matching.expandStale())
+        .catch((err) => app.log.error({ err }, "matching sweep failed"));
     }, interval);
     timer.unref();
     app.addHook("onClose", async () => clearInterval(timer));

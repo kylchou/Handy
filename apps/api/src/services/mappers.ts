@@ -190,6 +190,7 @@ export function toJobOfferDTO(
   r: ServiceRequestRow,
   category: ServiceCategoryRow | undefined,
   customer: UserRow,
+  ttlSeconds: number,
 ): JobOfferDTO {
   return {
     id: o.id,
@@ -210,6 +211,7 @@ export function toJobOfferDTO(
     estimatedPayCents: r.estimatedPriceCents,
     customer: toCustomerPublicDTO(customer),
     createdAt: o.createdAt.toISOString(),
+    expiresAt: new Date(o.createdAt.getTime() + ttlSeconds * 1000).toISOString(),
   };
 }
 
