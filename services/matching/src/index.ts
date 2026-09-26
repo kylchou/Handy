@@ -7,6 +7,8 @@ export type { BroadcastTier } from "./broadcast.js";
 export { haversineMiles } from "./geo.js";
 export { checkAvailability, DeterministicMatchingService, MatchingInputError, rankWorkers } from "./matchingService.js";
 export { CATEGORY_RATES, DEFAULT_RATE, estimatePrice, PLATFORM_FEE, URGENT_MULTIPLIER } from "./pricing.js";
+export { needsFor, REQUIREMENT_RULES, requirementFit, UNMET_NEED_PENALTY } from "./requirements.js";
+export type { RequirementRule } from "./requirements.js";
 export type { CategoryRate, PriceEstimate, PriceInput } from "./pricing.js";
 export {
   distanceScore,
@@ -14,6 +16,8 @@ export {
   qualificationScore,
   ratingScore,
   totalScore,
+  URGENT_WEIGHTS,
+  weightsFor,
   WEIGHTS,
 } from "./scoring.js";
 export type * from "./types.js";

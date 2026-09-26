@@ -6,6 +6,7 @@ import {
   type SafetyStatus,
   type ServiceRequestDraft,
 } from "@handy/contracts";
+import { AIServiceError } from "./errors.js";
 import { ClaudeExtractionModel, type ExtractionModel, type ModelRunResult } from "./model.js";
 import { buildContextBlock, clockIn, SYSTEM_PROMPT } from "./prompt.js";
 import { EMERGENCY_MESSAGES, classifySafety } from "./safety.js";
@@ -26,8 +27,6 @@ const DEFAULT_DURATION_MINUTES = 60;
 
 const REFUSAL_MESSAGE =
   "I'm sorry, that's not something our helpers can do. Is there something else I can help you with, like an errand, a ride, or help around the house?";
-
-const SAY_AGAIN_MESSAGE = "I'm sorry, I didn't quite catch that. Could you say it again, maybe in a different way?";
 
 const QUESTION_FOR: Record<RequiredField, string> = {
   serviceCategoryId: "What can we help you with?",
@@ -63,24 +62,27 @@ export class HandyAIService implements AIService {
     }
 
     // 2. Model turn: returns full updated request.
+    // Failures throw on purpose: backend answers that one message with its built-in assistant.
+    const input = {
+      system: SYSTEM_PROMPT,
+      messages: [
+        ...toModelHistory(ctx.history.slice(-this.maxHistoryTurns)),
+        {
+          role: "user" as const,
+          content: [
+            { type: "text" as const, text },
+            { type: "text" as const, text: buildContextBlock(ctx) },
+          ],
+        },
+      ],
+    };
     let result: ModelRunResult;
     try {
-      result = await this.model.run({
-        system: SYSTEM_PROMPT,
-        messages: [
-          ...toModelHistory(ctx.history.slice(-this.maxHistoryTurns)),
-          {
-            role: "user",
-            content: [
-              { type: "text", text },
-              { type: "text", text: buildContextBlock(ctx) },
-            ],
-          },
-        ],
-      });
-    } catch {
-      // Model down, bad JSON, bad shape → never throw at the customer. Draft unchanged; they just say it again.
-      return respond(SAY_AGAIN_MESSAGE, {}, current, "NEEDS_CLARIFICATION");
+      result = await this.model.run(input);
+    } catch (err) {
+      // Bad JSON / bad shape → one more try. Network, auth, credits → no point, SDK already retried.
+      if (!(err instanceof AIServiceError)) throw err;
+      result = await this.model.run(input);
     }
 
     if (result.kind === "refused") return respond(REFUSAL_MESSAGE, {}, current, "UNSUPPORTED_SERVICE");

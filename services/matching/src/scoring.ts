@@ -1,8 +1,24 @@
-import { MATCH_WEIGHTS, type QualificationLevel } from "@handy/contracts";
+import { MATCH_WEIGHTS, type QualificationLevel, type Urgency } from "@handy/contracts";
 import type { ScoreBreakdown } from "./types.js";
 
 /** Spec weights, from @handy/contracts. Must sum to 1. */
 export const WEIGHTS: ScoreBreakdown = { ...MATCH_WEIGHTS };
+
+/**
+ * HIGH urgency: closeness matters most, so distance 20% → 30%.
+ * The extra 10% comes from qualification (−5), rating (−3), experience (−2). Availability unchanged. Sums to 1.
+ */
+export const URGENT_WEIGHTS: ScoreBreakdown = {
+  qualification: 0.25,
+  availability: MATCH_WEIGHTS.availability,
+  distance: 0.3,
+  rating: 0.12,
+  experience: 0.08,
+};
+
+export function weightsFor(urgency: Urgency | undefined): ScoreBreakdown {
+  return urgency === "HIGH" ? URGENT_WEIGHTS : WEIGHTS;
+}
 
 const QUALIFICATION_SCORES: Record<QualificationLevel, number> = {
   BASIC: 70,
@@ -43,9 +59,9 @@ export function experienceScore(similarJobs: number): number {
 }
 
 /** Weighted total, 0–100, one decimal. */
-export function totalScore(breakdown: ScoreBreakdown): number {
-  const total = (Object.keys(WEIGHTS) as Array<keyof ScoreBreakdown>).reduce(
-    (sum, key) => sum + WEIGHTS[key] * breakdown[key],
+export function totalScore(breakdown: ScoreBreakdown, weights: ScoreBreakdown = WEIGHTS): number {
+  const total = (Object.keys(weights) as Array<keyof ScoreBreakdown>).reduce(
+    (sum, key) => sum + weights[key] * breakdown[key],
     0,
   );
   return round1(total);

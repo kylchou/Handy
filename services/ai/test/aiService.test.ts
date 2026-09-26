@@ -1,6 +1,8 @@
 import type { AIConversationContext, ServiceRequestDraft } from "@handy/contracts";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { HandyAIService } from "../src/aiService.js";
+import { AIServiceError } from "../src/errors.js";
+import { createAIService } from "../src/index.js";
 import type { ExtractionModel, ModelInput, ModelRunResult } from "../src/model.js";
 import type { ModelTurn } from "../src/schema.js";
 
@@ -217,19 +219,76 @@ describe("HandyAIService", () => {
     expect(res.readyToSubmit).toBe(false);
   });
 
-  it("returns a friendly say-that-again reply instead of throwing when the model fails", async () => {
+  it("throws when the model call fails (network, auth, credits), no retry", async () => {
+    let calls = 0;
     const model: ExtractionModel = {
       run: async () => {
-        throw new Error("network down");
+        calls++;
+        throw new Error("401 invalid x-api-key");
       },
     };
-    const res = await new HandyAIService({ model }).processMessage("c1", "mow my lawn", ctx({ currentDraft: { description: "Mow" } }));
-    expect(res).toEqual({
-      message: expect.stringContaining("say it again"),
-      extractedData: {},
-      missingInformation: ["serviceCategoryId", "location", "requestedDate", "requestedStartTime"],
-      readyToSubmit: false,
-      safetyStatus: "NEEDS_CLARIFICATION",
-    });
+    await expect(new HandyAIService({ model }).processMessage("c1", "mow my lawn", ctx())).rejects.toThrow("401 invalid x-api-key");
+    expect(calls).toBe(1);
+  });
+
+  it("retries bad JSON once, then succeeds", async () => {
+    const model = new StubModel([turn("What day?", { serviceCategory: "LAWN_CARE", description: "Mow the lawn" })]);
+    let failed = false;
+    const flaky: ExtractionModel = {
+      run: async (input) => {
+        if (!failed) {
+          failed = true;
+          throw new AIServiceError("Model returned invalid JSON");
+        }
+        return model.run(input);
+      },
+    };
+    const res = await new HandyAIService({ model: flaky }).processMessage("c1", "mow my lawn", ctx());
+    expect(res.extractedData.serviceCategoryId).toBe("LAWN_CARE");
+  });
+
+  it("throws if bad JSON happens twice", async () => {
+    let calls = 0;
+    const model: ExtractionModel = {
+      run: async () => {
+        calls++;
+        throw new AIServiceError("Model returned invalid JSON");
+      },
+    };
+    await expect(new HandyAIService({ model }).processMessage("c1", "mow my lawn", ctx())).rejects.toMatchObject({ name: "AIServiceError" });
+    expect(calls).toBe(2);
+  });
+
+  it("passes through the model's own clarifying reply when it worked but couldn't understand", async () => {
+    const { ai } = service([turn("Sorry, could you tell me that another way?", {}, { safetyStatus: "NEEDS_CLARIFICATION" })]);
+    const res = await ai.processMessage("c1", "the thing with the stuff", ctx());
+    expect(res).toMatchObject({ message: "Sorry, could you tell me that another way?", safetyStatus: "NEEDS_CLARIFICATION" });
+  });
+});
+
+describe("createAIService", () => {
+  const keys = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"] as const;
+  let saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    for (const k of keys) delete process.env[k];
+  });
+  afterEach(() => {
+    for (const k of keys) {
+      if (saved[k] === undefined) delete process.env[k];
+      else process.env[k] = saved[k];
+    }
+  });
+
+  it("throws without a key so the backend falls back at startup", () => {
+    expect(() => createAIService()).toThrow("ANTHROPIC_API_KEY is not set");
+    process.env.ANTHROPIC_API_KEY = "   ";
+    expect(() => createAIService()).toThrow("ANTHROPIC_API_KEY is not set");
+  });
+
+  it("works with a key, or with an injected model", () => {
+    expect(() => createAIService({ model: new StubModel([]) })).not.toThrow();
+    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
+    expect(createAIService()).toBeInstanceOf(HandyAIService);
   });
 });

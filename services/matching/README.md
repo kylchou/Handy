@@ -37,6 +37,19 @@ Missing coordinates on either side → `distance: null`, radius not enforced, di
 
 Weights from `MATCH_WEIGHTS` in contracts. Helped this customer before (`withCustomer`): +5 if last rating 4–5, else +2. Ties → closer wins. `availabilityMatch` = false only for partial schedule overlap. Each match includes `breakdown` + display `reasons` ("2.4 miles away", "Has helped this customer before").
 
+**Urgent jobs.** `urgency: "HIGH"` → closeness matters most. Distance 20% → 30%; qualification 25%, rating 12%, experience 8%, availability stays 25%. The closest good worker gets the first offer.
+
+**Special requirements.** Read from `specialRequirements`. Each need asks for at least `EXPERIENCED`:
+
+| need | triggered by | categories |
+|---|---|---|
+| heavy lifting | lift, heavy, couch, furniture | moving, home maintenance, cleaning, errands |
+| mobility help | wheelchair, walker, cane, into the car | transportation, companionship, errands |
+| ladder work | ladder, roof, gutters | home maintenance, cleaning |
+| memory loss | dementia, memory, confused | companionship, transportation |
+
+Soft rule, nobody dropped. Below the level → qualification −15 per need. At or above → reason "Experienced with heavy lifting". Rules live in `src/requirements.ts`.
+
 Spec example score 94.5 is off by 0.25; correct value 94.25, used in tests.
 
 ```sh

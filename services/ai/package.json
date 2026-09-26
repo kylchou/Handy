@@ -15,7 +15,7 @@
     "chat": "tsx src/cli.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "latest",
+    "@anthropic-ai/sdk": "~0.128.0",
     "@handy/contracts": "workspace:*",
     "zod": "^4.6.5"
   },

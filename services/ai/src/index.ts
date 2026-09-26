@@ -28,11 +28,16 @@ function claudeOptionsFromEnv(): ClaudeModelOptions {
 
 /**
  * Factory the backend loads (apps/api/src/integrations). Reads:
- *   AI_MODEL   default claude-opus-5
- *   AI_EFFORT  low | medium | high | xhigh | max, default medium
- * Key from ANTHROPIC_API_KEY (root .env) or `ant auth login` profile.
+ *   ANTHROPIC_API_KEY  required (or ANTHROPIC_AUTH_TOKEN), root .env
+ *   AI_MODEL           default claude-opus-5
+ *   AI_EFFORT          low | medium | high | xhigh | max, default medium
+ * No key → throws, so backend starts with its built-in assistant instead of a chat that can't work.
+ * Passing your own `model` (tests, stubs) skips the key check.
  */
 export function createAIService(overrides: HandyAIServiceOptions = {}): HandyAIService {
+  if (!overrides.model && !process.env.ANTHROPIC_API_KEY?.trim() && !process.env.ANTHROPIC_AUTH_TOKEN?.trim()) {
+    throw new Error("ANTHROPIC_API_KEY is not set");
+  }
   return new HandyAIService({ model: new ClaudeExtractionModel(claudeOptionsFromEnv()), ...overrides });
 }
 
