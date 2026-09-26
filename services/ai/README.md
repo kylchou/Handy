@@ -35,7 +35,7 @@ Merge rules:
 
 - Category must be in `context.serviceCategories` (all contract codes if that list is empty)
 
-Model down, bad JSON, or bad shape → never throws. Returns "sorry, could you say it again", `NEEDS_CLARIFICATION`, draft unchanged.
+Model call fails (network, auth, out of credits) → throws. Bad JSON → one retry, then throws. Backend answers that one message with its built-in assistant, conversation keeps going. "Could you say that again" only comes from the model itself, when it worked but didn't understand.
 
 ## Safety
 
@@ -76,12 +76,12 @@ const res = await createJobMessageDrafter().draft(
 
 | env (root `.env`) | default |
 |---|---|
-| `ANTHROPIC_API_KEY` | **required for real AI** (or `ant auth login` profile). Empty in `.env.example`; real key in `.env` only. Without it, every chat turn gets "could you say it again". |
+| `ANTHROPIC_API_KEY` | **required** (or `ANTHROPIC_AUTH_TOKEN`). Empty in `.env.example`; real key in `.env` only. Missing → `createAIService()` throws `ANTHROPIC_API_KEY is not set`, backend starts with its built-in assistant. |
 | `AI_MODEL` | `claude-opus-5` |
 | `AI_EFFORT` | `medium` (`low` = faster) |
 | `AI_SERVICE_MODULE` | `@handy/ai`. Set empty to use the backend's rule-based fallback (no key needed). |
 
-Claude declines → automatic retry on a fallback model (`fallbacks: "default"`).
+Claude declines → automatic retry on a fallback model (`fallbacks: "default"`). SDK pinned to `~0.128.0` so an update can't break the demo.
 
 ```sh
 pnpm --filter @handy/ai test       # stub model, no key needed
