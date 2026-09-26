@@ -6,6 +6,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastif
 import { API_PREFIX, type AIService, type ApiErrorBody, type MatchingService, type UserRole } from "@handy/contracts";
 import { createDb, seed, type DbHandle } from "@handy/db";
 import type { AppConfig } from "./config";
+import { registerApiDocs } from "./docs/openapi";
 import { loadIntegrations } from "./integrations";
 import { ApiError } from "./lib/errors";
 import { createRateLimits } from "./lib/rate-limits";
@@ -156,6 +157,9 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
     const body: ApiErrorBody = { error: { code: "NOT_FOUND", message: `No route for ${req.method} ${req.url}` } };
     reply.status(404).send(body);
   });
+
+  // Before any routes, so every route gets its docs attached.
+  if (config.docsEnabled) await registerApiDocs(app);
 
   app.get("/health", async () => ({ ok: true, db: dbHandle.driver, realtimeConnections: bus.connectionCount() }));
 

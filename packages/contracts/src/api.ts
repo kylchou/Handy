@@ -311,6 +311,7 @@ export type UpdateVerificationBody = z.infer<typeof updateVerificationSchema>;
 export interface ApiResponses {
   "POST /auth/signup": AuthResponse;
   "POST /auth/login": AuthResponse;
+  "POST /auth/logout": void;
   "GET /auth/me": MeResponse;
   "PATCH /users/me": UserDTO;
   "GET /service-categories": ServiceCategoryDTO[];

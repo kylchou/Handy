@@ -42,7 +42,7 @@ cp .env.example .env
 pnpm dev:api
 ```
 
-The API runs on http://localhost:4000.
+The API runs on http://localhost:4000, and you can try every endpoint in the browser at http://localhost:4000/docs.
 
 You don't need to install Postgres. By default it uses PGlite, which is basically Postgres running inside Node, and it saves to a `.data/` folder. The first time you start the API it creates the tables and adds demo data. If you want to use a real Postgres database instead, change `DATABASE_URL` in `.env`.
 
@@ -80,7 +80,7 @@ pnpm db:reset       # wipe the database and reseed it
 
 ## Notes
 
-- All the endpoints and live events are documented in [docs/api.md](docs/api.md).
+- All the endpoints and live events are documented in [docs/api.md](docs/api.md), and there are interactive docs at `/docs` while the API is running.
 - Between demo runs, log in as admin and call `POST /api/v1/admin/demo/reset` (or `api.admin.resetDemo()`) to put everything back to the starting data without logging anyone out. Arjun, this would be a good button on the admin dashboard.
 - Use `createApiClient` from `@handy/contracts` to call the backend instead of writing fetch calls (see the top of [docs/api.md](docs/api.md)).
 - Import shared types from `@handy/contracts` instead of making your own, so everyone stays in sync.

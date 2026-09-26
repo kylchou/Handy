@@ -1,6 +1,6 @@
 # API docs
 
-Base URL is `http://localhost:4000/api/v1`. All the types mentioned here come from `@handy/contracts`. If you want the exact response type for an endpoint, check `ApiResponses` in [packages/contracts/src/api.ts](../packages/contracts/src/api.ts).
+Base URL is `http://localhost:4000/api/v1`. When the API is running you can also open **http://localhost:4000/docs** to see every endpoint and try them in the browser: log in with `POST /auth/login`, copy the token, and click Authorize. All the types mentioned here come from `@handy/contracts`. If you want the exact response type for an endpoint, check `ApiResponses` in [packages/contracts/src/api.ts](../packages/contracts/src/api.ts).
 
 ## Using the API client
 
