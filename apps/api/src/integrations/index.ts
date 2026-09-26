@@ -18,13 +18,14 @@ type Logger = { info: (msg: string) => void; warn: (msg: string) => void };
 export async function loadIntegrations(
   modules: { ai: string; matching: string },
   log: Logger,
+  opts: { aiTimeoutSeconds?: number } = {},
 ): Promise<{ ai: AIService; matching: MatchingService }> {
   const fallbackAI = new FallbackAIService();
   const fallbackMatching = new FallbackMatchingService();
   const ai = await tryLoad<AIService>(modules.ai, "createAIService", "processMessage", log);
   const matching = await tryLoad<MatchingService>(modules.matching, "createMatchingService", "findMatches", log);
   return {
-    ai: ai ? new GuardedAIService(ai, fallbackAI, log) : (log.info("AI: using built-in rule-based fallback"), fallbackAI),
+    ai: ai ? new GuardedAIService(ai, fallbackAI, log, opts.aiTimeoutSeconds ? opts.aiTimeoutSeconds * 1000 : undefined) : (log.info("AI: using built-in rule-based fallback"), fallbackAI),
     matching: matching
       ? new GuardedMatchingService(matching, fallbackMatching, log)
       : (log.info("Matching: using built-in deterministic fallback"), fallbackMatching),

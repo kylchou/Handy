@@ -278,7 +278,7 @@ Until then there are placeholder versions in `apps/api/src/integrations/` (`fall
 Once your packages are plugged in, they still get backed up by the placeholders:
 
 - If `createAIService()` or `createMatchingService()` throws (like when the API key isn't set), the server starts anyway and uses the placeholder.
-- If a call throws or takes too long (20 seconds for the AI, 5 for matching), that one call uses the placeholder and a warning gets logged.
+- If a call throws or takes too long (30 seconds for the AI, which you can change with `AI_TIMEOUT_SECONDS`, and 5 for matching), that one call uses the placeholder and a warning gets logged.
 - Answers get checked before they're saved. Bad fields are dropped: a category that doesn't exist, a date like "tomorrow" instead of `2026-09-27`, or a `preferredWorkerId` for someone who hasn't helped this customer. Lowercase urgency and safety status are fine, and `9:30` becomes `09:30`. For matching, workers that weren't in `candidates` and repeats are dropped, and scores are kept between 0 and 100.
 
 So if your service seems to be ignoring something, check the API log for a warning.
