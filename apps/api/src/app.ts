@@ -155,6 +155,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
         .expirePastRequests()
         .then(() => services.matching.expireOffers())
         .then(() => services.matching.expandStale())
+        .then(() => services.jobs.sendReminders())
         .catch((err) => app.log.error({ err }, "matching sweep failed"));
     }, interval);
     timer.unref();

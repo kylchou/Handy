@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, ne, type SQL } from "drizzle-orm";
+import { and, asc, between, desc, eq, inArray, isNull, ne, or, type SQL } from "drizzle-orm";
 import { jobMessages, jobs, ratings, serviceRequests, type Database, type JobRow } from "@handy/db";
 import type { JobStatus } from "@handy/contracts";
 
@@ -26,6 +26,30 @@ export const jobsRepo = {
   async update(db: Database, id: string, values: Partial<Omit<JobRow, "id" | "requestId" | "createdAt">>) {
     const [row] = await db.update(jobs).set(values).where(eq(jobs.id, id)).returning();
     return row!;
+  },
+  /** ACCEPTED jobs between two dates that still have a reminder to send (or skip). */
+  async awaitingReminders(db: Database, fromDate: string, toDate: string) {
+    return db
+      .select({ job: jobs, request: serviceRequests })
+      .from(jobs)
+      .innerJoin(serviceRequests, eq(serviceRequests.id, jobs.requestId))
+      .where(
+        and(
+          eq(jobs.status, "ACCEPTED"),
+          or(isNull(jobs.dayReminderSentAt), isNull(jobs.hourReminderSentAt)),
+          between(serviceRequests.requestedDate, fromDate, toDate),
+        ),
+      );
+  },
+  /** Marks a reminder as handled. Returns false if another sweep already claimed it. */
+  async claimReminder(db: Database, jobId: string, kind: "day" | "hour", at: Date) {
+    const column = kind === "day" ? jobs.dayReminderSentAt : jobs.hourReminderSentAt;
+    const rows = await db
+      .update(jobs)
+      .set(kind === "day" ? { dayReminderSentAt: at } : { hourReminderSentAt: at })
+      .where(and(eq(jobs.id, jobId), isNull(column)))
+      .returning({ id: jobs.id });
+    return rows.length > 0;
   },
   async list(db: Database, filter: { workerId?: string; customerId?: string; status?: JobStatus } = {}) {
     const where: SQL[] = [];

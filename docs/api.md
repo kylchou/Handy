@@ -177,6 +177,13 @@ Caregivers never see the arrival code, and they can't use `/jobs`, `/requests`, 
 
 Saved messages like "James is on the way." so they're still there after a refresh.
 
+**Reminders** (type `JOB_REMINDER`) go out automatically for accepted jobs:
+
+- About a day before: the customer gets "Reminder: James is coming tomorrow at 10 AM." with their arrival code, the worker gets "Reminder: Moving help for Margaret T. tomorrow at 10 AM." with the address, and caregivers get one too.
+- About an hour before: the customer gets "James is coming in about an hour." and the worker gets a heads up. Caregivers don't get this one.
+
+Each reminder only goes out once. It's skipped if the worker accepted after that point, since the "James is helping you" notification already covered it.
+
 | Endpoint | Notes |
 | --- | --- |
 | `GET /notifications` | Latest 50. `?unread=true` for unread only. |

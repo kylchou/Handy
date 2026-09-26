@@ -11,7 +11,8 @@ import {
 } from "@handy/contracts";
 import type { JobRow, ServiceRequestRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
-import { addDays, formatTime12h, todayIn, windowsOverlap } from "../lib/time";
+import { addDays, formatTime12h, friendlyDate, todayIn, windowsOverlap, zonedDateTimeToDate } from "../lib/time";
+import { categoriesRepo } from "../repositories/categories";
 import { jobMessagesRepo, jobsRepo, ratingsRepo } from "../repositories/jobs";
 import { offersRepo } from "../repositories/offers";
 import { requestsRepo } from "../repositories/requests";
@@ -38,6 +39,8 @@ const STATUS_TIMESTAMP: Partial<Record<JobStatus, keyof JobRow>> = {
 };
 
 const MAX_ARRIVAL_CODE_ATTEMPTS = 5;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 
 function isUniqueViolation(err: unknown): boolean {
   const e = err as { code?: string; cause?: { code?: string } };
@@ -287,6 +290,80 @@ export class JobService {
     }
   }
 
+  // ---------- Reminders ----------
+
+  /**
+   * Sends "tomorrow" (24h before) and "in about an hour" reminders for accepted
+   * jobs. Each is sent once. It's skipped silently if the worker accepted after
+   * that point (the acceptance notice already told everyone) or if the time
+   * already passed. Called on an interval.
+   */
+  async sendReminders(now = new Date()): Promise<number> {
+    const { db, config } = this.ctx;
+    const today = todayIn(config.timezone, now);
+    const due = await jobsRepo.awaitingReminders(db, addDays(today, -1), addDays(today, 2));
+    if (due.length === 0) return 0;
+    const categoryName = new Map((await categoriesRepo.list(db)).map((c) => [c.id, c.name]));
+    let sent = 0;
+
+    for (const { job, request } of due) {
+      const start = zonedDateTimeToDate(request.requestedDate, request.requestedStartTime, config.timezone).getTime();
+      const t = now.getTime();
+      const hourDue = t >= start - HOUR_MS;
+      const dayDue = t >= start - DAY_MS;
+      const acceptedAt = job.acceptedAt?.getTime() ?? 0;
+
+      // If the hour reminder is already due, the day one would just be noise.
+      if (dayDue && !job.dayReminderSentAt && (await jobsRepo.claimReminder(db, job.id, "day", now))) {
+        if (!hourDue && acceptedAt < start - DAY_MS) {
+          await this.remind(job, request, "day", categoryName.get(request.serviceCategoryId) ?? "Your", now);
+          sent++;
+        }
+      }
+      if (hourDue && !job.hourReminderSentAt && (await jobsRepo.claimReminder(db, job.id, "hour", now))) {
+        if (t < start && acceptedAt < start - HOUR_MS) {
+          await this.remind(job, request, "hour", categoryName.get(request.serviceCategoryId) ?? "Your", now);
+          sent++;
+        }
+      }
+    }
+    if (sent) this.ctx.log.info({ sent }, "sent job reminders");
+    return sent;
+  }
+
+  private async remind(job: JobRow, request: ServiceRequestRow, kind: "day" | "hour", service: string, now: Date) {
+    const [worker, customer] = await Promise.all([
+      usersRepo.findById(this.ctx.db, job.workerId),
+      usersRepo.findById(this.ctx.db, request.customerId),
+    ]);
+    const workerName = worker?.firstName ?? "Your helper";
+    const customerName = customer ? `${customer.firstName} ${customer.lastName.charAt(0)}.` : "the customer";
+    const when = this.friendlyWhen(request, now);
+    const code = job.arrivalCode ? ` Your arrival code is ${job.arrivalCode}.` : "";
+    const data = { jobId: job.id, requestId: request.id, reminder: kind };
+
+    if (kind === "day") {
+      await this.notifier.notifyCustomer(
+        request.customerId,
+        "JOB_REMINDER",
+        `Reminder: ${workerName} is coming ${when}.`,
+        `${service}: ${request.description}.${code}`,
+        data,
+        (who) => ({ title: `${workerName} is helping ${who} ${when}.` }),
+      );
+      await this.notifier.notify(job.workerId, "JOB_REMINDER", `Reminder: ${service} for ${customerName} ${when}.`, request.location, data);
+    } else {
+      await this.notifier.notify(
+        request.customerId,
+        "JOB_REMINDER",
+        `${workerName} is coming in about an hour.`,
+        `Around ${formatTime12h(request.requestedStartTime)}.${code}`,
+        data,
+      );
+      await this.notifier.notify(job.workerId, "JOB_REMINDER", `Your ${service.toLowerCase()} job for ${customerName} starts in about an hour.`, request.location, data);
+    }
+  }
+
   // ---------- Chat ----------
 
   async messages(actor: Actor, jobId: string): Promise<JobMessageDTO[]> {
@@ -354,9 +431,10 @@ export class JobService {
     return { job, request };
   }
 
-  private friendlyWhen(r: ServiceRequestRow): string {
-    const today = todayIn(this.ctx.config.timezone);
-    const day = r.requestedDate === today ? "today" : r.requestedDate === addDays(today, 1) ? "tomorrow" : `on ${r.requestedDate}`;
+  private friendlyWhen(r: ServiceRequestRow, now = new Date()): string {
+    const today = todayIn(this.ctx.config.timezone, now);
+    const day =
+      r.requestedDate === today ? "today" : r.requestedDate === addDays(today, 1) ? "tomorrow" : `on ${friendlyDate(r.requestedDate)}`;
     return `${day} at ${formatTime12h(r.requestedStartTime)}`;
   }
 }
