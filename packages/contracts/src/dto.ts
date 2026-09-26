@@ -327,3 +327,27 @@ export interface AdminWorkerDTO extends UserDTO {
   profile: WorkerProfileDTO;
   activeJobCount: number;
 }
+
+/** A code a customer gives a family member so they can link as a caregiver. */
+export interface CaregiverInviteDTO {
+  code: string;
+  expiresAt: string;
+}
+
+/** One of the customer's linked caregivers. */
+export interface CaregiverLinkDTO {
+  caregiver: { id: string; firstName: string; lastName: string; email: string };
+  linkedAt: string;
+}
+
+/** Everything on a caregiver's dashboard about one person they help. */
+export interface CaregiverPersonDTO {
+  customer: { id: string; firstName: string; lastName: string; address: string | null };
+  linkedAt: string;
+  /** Jobs a worker has accepted that aren't finished yet. arrivalCode is always null here. */
+  activeJobs: JobDetailDTO[];
+  /** Requests still looking for a worker. */
+  openRequests: ServiceRequestDTO[];
+  /** The 10 most recent requests, newest first. */
+  recentHistory: CustomerHistoryItemDTO[];
+}

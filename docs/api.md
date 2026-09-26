@@ -50,7 +50,7 @@ A few things to know:
 
 ## Roles
 
-`CUSTOMER`, `WORKER`, `ADMIN`. You pick customer or worker at signup. Admin only comes from the seed data. Wrong role = 403.
+`CUSTOMER`, `WORKER`, `CAREGIVER`, `ADMIN`. You pick customer, worker, or caregiver at signup. Admin only comes from the seed data. Wrong role = 403.
 
 ## Endpoints
 
@@ -145,6 +145,33 @@ Helpers in contracts: `canTransitionJob()` checks if a change is allowed, `nextW
 | `GET /workers/me/earnings` | |
 | `GET /workers/:id` | Public profile (first name + last initial only) |
 | `GET /workers/:id/ratings` | |
+
+### Caregivers
+
+A caregiver is a family member who wants to keep an eye on things. They can see everything but can't change anything.
+
+Linking works with an invite code so the older adult has to agree to it:
+
+1. The customer makes a code with `POST /customers/me/caregivers/invite`. It's 6 characters, with no 0/O or 1/I so it's easy to read over the phone, and it's good for 24 hours.
+2. The caregiver signs up with `role: "CAREGIVER"` and enters it with `POST /caregivers/me/links { code }`. Codes work once.
+
+| Endpoint | Who | Notes |
+| --- | --- | --- |
+| `POST /customers/me/caregivers/invite` | customer | `{ code, expiresAt }` |
+| `GET /customers/me/caregivers` | customer | Who's linked |
+| `DELETE /customers/me/caregivers/:caregiverId` | customer | Remove someone |
+| `POST /caregivers/me/links` | caregiver | `{ code }`. Wrong, used, or expired code is 400 `INVALID_INVITE`. |
+| `GET /caregivers/me/people` | caregiver | The whole dashboard: for each person, their active jobs, requests still searching, and last 10 history items |
+| `DELETE /caregivers/me/people/:customerId` | caregiver | Unlink yourself |
+
+Caregivers get notifications for the stuff that matters, not every step:
+
+- A worker accepted ("James R. will help Margaret tomorrow at 3 PM.")
+- The worker arrived, or finished the job
+- A job got cancelled, or nobody could be found in time
+- **Emergency:** if the customer says something that sounds like an emergency to the AI, caregivers get "Margaret may need help right now." (only once per conversation)
+
+Caregivers never see the arrival code, and they can't use `/jobs`, `/requests`, or the AI chat directly, only their dashboard.
 
 ### Notifications
 

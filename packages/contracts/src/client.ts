@@ -114,6 +114,7 @@ export function createApiClient(options: ApiClientOptions) {
   const post = <T>(path: string, body?: unknown) => request<T>("POST", path, body);
   const put = <T>(path: string, body: unknown) => request<T>("PUT", path, body);
   const patch = <T>(path: string, body: unknown) => request<T>("PATCH", path, body);
+  const del = <T>(path: string) => request<T>("DELETE", path);
   const id = encodeURIComponent;
 
   return {
@@ -154,6 +155,19 @@ export function createApiClient(options: ApiClientOptions) {
       getProfile: (): R<"GET /customers/me/profile"> => get("/customers/me/profile"),
       updateProfile: (body: In<typeof updateCustomerProfileSchema>): R<"PUT /customers/me/profile"> => put("/customers/me/profile", body),
       history: (): R<"GET /customers/me/history"> => get("/customers/me/history"),
+      /** A 6-character code to give a family member so they can link as a caregiver. */
+      createCaregiverInvite: (): R<"POST /customers/me/caregivers/invite"> => post("/customers/me/caregivers/invite"),
+      caregivers: (): R<"GET /customers/me/caregivers"> => get("/customers/me/caregivers"),
+      removeCaregiver: (caregiverId: string): R<"DELETE /customers/me/caregivers/:caregiverId"> =>
+        del(`/customers/me/caregivers/${id(caregiverId)}`),
+    },
+
+    caregivers: {
+      /** Links to a customer using the code they gave you. */
+      acceptInvite: (code: string): R<"POST /caregivers/me/links"> => post("/caregivers/me/links", { code }),
+      /** Everyone you help, with their current jobs, open requests and recent history. */
+      people: (): R<"GET /caregivers/me/people"> => get("/caregivers/me/people"),
+      unlink: (customerId: string): R<"DELETE /caregivers/me/people/:customerId"> => del(`/caregivers/me/people/${id(customerId)}`),
     },
 
     workers: {

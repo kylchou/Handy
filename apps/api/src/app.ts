@@ -10,6 +10,7 @@ import { ApiError } from "./lib/errors";
 import { authenticate, newJti, requireRole, TokenRevocations } from "./middleware/auth";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
+import { caregiverRoutes } from "./routes/caregivers";
 import { categoryRoutes } from "./routes/categories";
 import { conversationRoutes } from "./routes/conversations";
 import { customerRoutes } from "./routes/customers";
@@ -94,9 +95,11 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
     auth: [auth],
     customer: [auth, requireRole("CUSTOMER")],
     worker: [auth, requireRole("WORKER")],
+    caregiver: [auth, requireRole("CAREGIVER")],
     admin: [auth, requireRole("ADMIN")],
     customerOrAdmin: [auth, requireRole("CUSTOMER", "ADMIN")],
     workerOrAdmin: [auth, requireRole("WORKER", "ADMIN")],
+    jobParticipant: [auth, requireRole("CUSTOMER", "WORKER", "ADMIN")],
   };
   const deps: RouteDeps = { services, guards };
 
@@ -139,6 +142,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
       await api.register(ratingRoutes, deps);
       await api.register(notificationRoutes, deps);
       await api.register(adminRoutes, deps);
+      await api.register(caregiverRoutes, deps);
       await api.register(realtimeRoutes, { bus, revocations, corsOrigins: config.corsOrigins });
     },
     { prefix: API_PREFIX },

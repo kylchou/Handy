@@ -15,7 +15,7 @@ export async function jobRoutes(app: FastifyInstance, { services, guards }: Rout
     services.jobs.decline(req.user, req.params.offerId),
   );
 
-  app.get("/jobs", { preHandler: guards.auth }, async (req) => {
+  app.get("/jobs", { preHandler: guards.jobParticipant }, async (req) => {
     const { status } = parse(listJobsQuerySchema, req.query);
     return services.jobs.list(req.user, status);
   });

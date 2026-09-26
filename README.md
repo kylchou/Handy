@@ -24,6 +24,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Anything that sounds like an emergency is blocked and the user is told to call 911
 - Workers only see a general area until they accept, then they get the full address
 - Customer and worker chat, so nobody has to share phone numbers
+- Caregiver mode: family members can link to someone with an invite code, see their jobs, and get updates when a worker arrives or finishes. They also get alerted if the person describes an emergency to the AI.
 - Live updates over SSE or WebSockets, plus saved notifications. If the connection drops, it catches up on what it missed when it reconnects.
 - Ratings, job history, worker earnings, and admin stats
 - A typed API client in `@handy/contracts` for the frontends
@@ -51,6 +52,7 @@ Password for all of them is `password123`.
 - `james@handy.demo` - worker (moving + home repairs, best match for the couch demo)
 - `tom@handy.demo`, `maria@handy.demo`, `david@handy.demo`, `aisha@handy.demo`, `grace@handy.demo`, `marcus@handy.demo` - more workers
 - `linda@handy.demo` - worker who isn't verified yet, so she won't get jobs until an admin approves her
+- `susan@handy.demo` - caregiver (Margaret's daughter), already linked to Margaret
 - `admin@handy.demo` - admin
 
 ## Who's working on what

@@ -161,12 +161,16 @@ export class RequestService {
       count++;
       for (const o of result.withdrawn) this.notifier.emit([o.workerId], "JOB_NO_LONGER_AVAILABLE", { requestId: r.id, offerId: o.id });
       this.notifier.emit([r.customerId], "REQUEST_EXPIRED", { requestId: r.id, status: result.request.status });
-      await this.notifier.notify(
+      await this.notifier.notifyCustomer(
         r.customerId,
         "REQUEST_EXPIRED",
         `We couldn't find anyone for your ${categoryName.get(r.serviceCategoryId) ?? "request"} on ${friendlyDate(r.requestedDate)}.`,
         "Would you like to pick another time? Just start a new request and we'll look again.",
         { requestId: r.id },
+        (who) => ({
+          title: `We couldn't find anyone for ${who}'s ${categoryName.get(r.serviceCategoryId) ?? "request"} on ${friendlyDate(r.requestedDate)}.`,
+          body: "You might want to check in with them about picking another time.",
+        }),
       );
     }
     if (count) this.ctx.log.info({ expired: count }, "expired requests nobody accepted in time");

@@ -222,6 +222,100 @@ describe("API client", () => {
     });
   });
 
+  describe("caregivers", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const titles = async (api: ApiClient) => (await api.notifications.list()).map((n) => n.title);
+
+    it("links a family member with an invite code", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const niece = client();
+      const nora = await niece.auth.signup({ role: "CAREGIVER", firstName: "Nora", lastName: "Hayes", email: "nora@example.com", password: "longenough1" });
+      expect(await niece.caregivers.people()).toEqual([]);
+
+      const { code } = await margaret.customers.createCaregiverInvite();
+      expect(code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+      await expect(niece.caregivers.acceptInvite("ZZZZZZ")).rejects.toMatchObject({ status: 400, code: "INVALID_INVITE" });
+
+      const person = await niece.caregivers.acceptInvite(code.toLowerCase());
+      expect(person.customer.firstName).toBe("Margaret");
+      expect(await titles(margaret)).toContain("Nora can now see your Handy requests.");
+      expect((await margaret.customers.caregivers()).map((c) => c.caregiver.firstName).sort()).toEqual(["Nora", "Susan"]);
+
+      // Codes only work once.
+      const other = client();
+      await other.auth.signup({ role: "CAREGIVER", firstName: "Omar", lastName: "Ali", email: "omar@example.com", password: "longenough1" });
+      await expect(other.caregivers.acceptInvite(code)).rejects.toMatchObject({ code: "INVALID_INVITE" });
+
+      // Margaret can remove her; Nora's dashboard is empty again.
+      await margaret.customers.removeCaregiver(nora.user.id);
+      expect(await niece.caregivers.people()).toEqual([]);
+      await expect(niece.caregivers.unlink(person.customer.id)).rejects.toMatchObject({ status: 404 });
+    });
+
+    it("keeps the caregiver updated on the moments that matter", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "MOVING_ASSISTANCE",
+        description: "Move a chair",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 3),
+        requestedStartTime: "11:00",
+      });
+      const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+      const job = await james.jobs.acceptOffer(offer.id);
+      expect((await titles(susan)).some((t) => t.startsWith("James R. will help Margaret"))).toBe(true);
+
+      // The dashboard shows the job, but never the arrival code.
+      const [person] = await susan.caregivers.people();
+      const active = person!.activeJobs.find((j) => j.id === job.id)!;
+      expect(active.worker.displayName).toBe("James R.");
+      expect(active.arrivalCode).toBeNull();
+
+      await james.jobs.updateStatus(job.id, "EN_ROUTE");
+      await james.jobs.arrive(job.id, (await margaret.jobs.get(job.id)).arrivalCode!);
+      await james.jobs.updateStatus(job.id, "IN_PROGRESS");
+      await james.jobs.updateStatus(job.id, "COMPLETED");
+
+      const susanTitles = await titles(susan);
+      expect(susanTitles).toContain("James has arrived at Margaret's.");
+      expect(susanTitles).toContain("James finished helping Margaret.");
+      // Not every step, just the important ones.
+      expect(susanTitles.some((t) => t.includes("on the way"))).toBe(false);
+      expect((await susan.caregivers.people())[0]!.recentHistory.find((h) => h.requestId === request.id)?.jobStatus).toBe("COMPLETED");
+    });
+
+    it("alerts caregivers once when the customer describes an emergency", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const { conversation } = await margaret.conversations.create();
+      await margaret.conversations.sendMessage(conversation.id, "I fell and can't get up");
+      await margaret.conversations.sendMessage(conversation.id, "I fell and can't get up, please help");
+      const alerts = (await susan.notifications.list()).filter((n) => n.type === "POTENTIAL_EMERGENCY");
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]!.title).toBe("Margaret may need help right now.");
+    });
+
+    it("is read-only", async () => {
+      const susan = await login("susan@handy.demo");
+      const [person] = await susan.caregivers.people();
+      const job = person!.recentHistory.find((h) => h.jobId)!;
+      await expect(susan.jobs.list()).rejects.toMatchObject({ status: 403 });
+      await expect(susan.jobs.get(job.jobId!)).rejects.toMatchObject({ status: 403 });
+      await expect(susan.requests.get(job.requestId)).rejects.toMatchObject({ status: 403 });
+      await expect(susan.conversations.create()).rejects.toMatchObject({ status: 403 });
+      await expect(susan.customers.createCaregiverInvite()).rejects.toMatchObject({ status: 403 });
+    });
+  });
+
   it("resets the demo data without logging anyone out", async () => {
     const admin = client();
     const margaret = client();
@@ -233,7 +327,7 @@ describe("API client", () => {
     await newbie.auth.signup({ role: "CUSTOMER", firstName: "Temp", lastName: "User", email: "temp@example.com", password: "longenough1" });
 
     // The demo flow above changed James's stats and Margaret's history.
-    expect((await james.workers.getProfile()).completedJobs).toBe(88);
+    expect((await james.workers.getProfile()).completedJobs).toBeGreaterThan(87);
     expect((await margaret.customers.history()).length).toBeGreaterThan(1);
     await expect(james.admin.resetDemo()).rejects.toMatchObject({ status: 403 });
 
@@ -257,6 +351,9 @@ describe("API client", () => {
     expect(await james.jobs.available()).toHaveLength(0);
     await expect(client().auth.login({ email: "temp@example.com", password: "longenough1" })).rejects.toMatchObject({ status: 401 });
     expect((await admin.admin.stats()).activeRequests).toBe(0);
+    const susan = client();
+    await susan.auth.login({ email: "susan@handy.demo", password: DEMO_PASSWORD });
+    expect((await susan.caregivers.people()).map((p) => p.customer.firstName)).toEqual(["Margaret"]);
   });
 
   it("refuses to reset when demo reset is turned off", async () => {

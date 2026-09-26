@@ -14,13 +14,17 @@ import { categoriesRepo } from "../repositories/categories";
 import { conversationsRepo } from "../repositories/conversations";
 import { requestsRepo } from "../repositories/requests";
 import { customerProfilesRepo, usersRepo } from "../repositories/users";
-import type { Actor, ServiceContext } from "./context";
+import { Notifier, type Actor, type ServiceContext } from "./context";
 import { toCategoryDTO, toConversationDTO, toConversationMessageDTO } from "./mappers";
 
 export const GREETING = "Hello! What can we help you with today? You can type or tap the microphone and tell me in your own words.";
 
 export class ConversationService {
-  constructor(private ctx: ServiceContext) {}
+  private notifier: Notifier;
+
+  constructor(private ctx: ServiceContext) {
+    this.notifier = new Notifier(ctx);
+  }
 
   async create(actor: Actor): Promise<CreateConversationResponse> {
     const conv = await conversationsRepo.create(this.ctx.db, actor.id);
@@ -96,6 +100,19 @@ export class ConversationService {
       readyToSubmit,
       safetyStatus: ai.safetyStatus,
     });
+
+    // Let the family know right away, once per conversation.
+    if (ai.safetyStatus === "POTENTIAL_EMERGENCY" && conv.safetyStatus !== "POTENTIAL_EMERGENCY") {
+      await this.notifier.notifyCaregivers(
+        actor.id,
+        "POTENTIAL_EMERGENCY",
+        (who) => ({
+          title: `${who} may need help right now.`,
+          body: `${who} described what sounds like an emergency to the Handy assistant and was told to call 911. Please check on them.`,
+        }),
+        { conversationId: conv.id },
+      );
+    }
 
     return {
       userMessage: toConversationMessageDTO(userMessage),

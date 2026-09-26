@@ -124,13 +124,17 @@ export class JobService {
       status: job.status,
       workerId: actor.id,
     });
-    await this.notifier.notify(
+    await this.notifier.notifyCustomer(
       request.customerId,
       "JOB_ACCEPTED",
       `${detail.worker.firstName} is helping you ${this.friendlyWhen(request)}.`,
       `${detail.worker.displayName} · ${detail.worker.rating.toFixed(1)} stars · ${detail.worker.completedJobs} completed jobs. ` +
         `Your arrival code is ${job.arrivalCode}. Only tell it to ${detail.worker.firstName} once they're at your door.`,
       { jobId: job.id, requestId: request.id },
+      (who) => ({
+        title: `${detail.worker.displayName} will help ${who} ${this.friendlyWhen(request)}.`,
+        body: `${detail.worker.rating.toFixed(1)} stars · ${detail.worker.completedJobs} completed jobs`,
+      }),
     );
     return detail;
   }
@@ -149,6 +153,7 @@ export class JobService {
   // ---------- Jobs ----------
 
   async list(actor: Actor, status?: JobStatus): Promise<JobDetailDTO[]> {
+    if (actor.role === "CAREGIVER") throw forbidden("Caregivers can see jobs on their dashboard.");
     const filter =
       actor.role === "WORKER" ? { workerId: actor.id, status } : actor.role === "CUSTOMER" ? { customerId: actor.id, status } : { status };
     return jobDetails(this.ctx, await jobsRepo.list(this.ctx.db, filter), actor);
@@ -238,14 +243,25 @@ export class JobService {
     const data = { jobId: job.id, requestId: request.id };
 
     if (job.status === "CANCELLED") {
-      const cancelledBy = actor.role;
+      // Caregivers are read-only, so only these three roles can cancel (see JOB_STATUS_TRANSITIONS).
+      const cancelledBy = actor.role as "CUSTOMER" | "WORKER" | "ADMIN";
       this.notifier.emit(parties, "JOB_CANCELLED", { ...ref, cancelledBy });
       if (cancelledBy === "WORKER") {
-        await this.notifier.notify(request.customerId, "JOB_CANCELLED", `${name} can no longer make it.`, "Don't worry — we're looking for someone else to help you.", data);
+        await this.notifier.notifyCustomer(
+          request.customerId,
+          "JOB_CANCELLED",
+          `${name} can no longer make it.`,
+          "Don't worry — we're looking for someone else to help you.",
+          data,
+          (who) => ({ title: `${name} can no longer make it to ${who}'s job.`, body: "We're looking for someone else." }),
+        );
       } else if (cancelledBy === "CUSTOMER") {
         await this.notifier.notify(job.workerId, "JOB_CANCELLED", "The customer cancelled this job.", null, data);
+        await this.notifier.notifyCaregivers(request.customerId, "JOB_CANCELLED", (who) => ({ title: `${who} cancelled a job with ${name}.` }), data);
       } else {
-        await this.notifier.notify(request.customerId, "JOB_CANCELLED", "Your job was cancelled by our support team.", null, data);
+        await this.notifier.notifyCustomer(request.customerId, "JOB_CANCELLED", "Your job was cancelled by our support team.", null, data, (who) => ({
+          title: `${who}'s job was cancelled by our support team.`,
+        }));
         await this.notifier.notify(job.workerId, "JOB_CANCELLED", "This job was cancelled by our support team.", null, data);
       }
       return;
@@ -259,8 +275,16 @@ export class JobService {
       IN_PROGRESS: [`${name} has started working.`, null],
       COMPLETED: [`${name} has marked your job as complete.`, "Was everything completed successfully? You can leave a rating."],
     };
+    // Caregivers only hear about the moments that matter, not every step.
+    const forCaregivers: Partial<Record<JobStatus, (who: string) => string>> = {
+      ARRIVED: (who) => `${name} has arrived at ${who}'s.`,
+      COMPLETED: (who) => `${name} finished helping ${who}.`,
+    };
     const msg = messages[job.status];
-    if (msg) await this.notifier.notify(request.customerId, type ?? job.status, msg[0], msg[1], data);
+    const caregiverTitle = forCaregivers[job.status];
+    if (msg) {
+      await this.notifier.notifyCustomer(request.customerId, type ?? job.status, msg[0], msg[1], data, caregiverTitle && ((who) => ({ title: caregiverTitle(who) })));
+    }
   }
 
   // ---------- Chat ----------

@@ -12,6 +12,9 @@ import type {
   AdminCustomerDTO,
   AdminStatsDTO,
   AdminWorkerDTO,
+  CaregiverInviteDTO,
+  CaregiverLinkDTO,
+  CaregiverPersonDTO,
   ConversationDTO,
   ConversationMessageDTO,
   CustomerHistoryItemDTO,
@@ -53,6 +56,7 @@ export type ApiErrorCode =
   | "SCHEDULE_CONFLICT"
   | "INVALID_ARRIVAL_CODE"
   | "TOO_MANY_ATTEMPTS"
+  | "INVALID_INVITE"
   | "INTERNAL_ERROR";
 
 /** Body of every non-2xx response. */
@@ -96,7 +100,7 @@ const communicationPreferencesSchema = z.object({
 // ---------- Auth ----------
 
 export const signupSchema = z.object({
-  role: z.enum(["CUSTOMER", "WORKER"]),
+  role: z.enum(["CUSTOMER", "WORKER", "CAREGIVER"]),
   firstName: z.string().trim().min(1).max(100),
   lastName: z.string().trim().min(1).max(100),
   email: z.string().trim().toLowerCase().pipe(z.email()),
@@ -282,6 +286,17 @@ export const createRatingSchema = z.object({
 });
 export type CreateRatingBody = z.infer<typeof createRatingSchema>;
 
+// ---------- Caregivers ----------
+
+export const acceptCaregiverInviteSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z0-9]{6}$/, "The invite code is 6 letters and numbers"),
+});
+export type AcceptCaregiverInviteBody = z.input<typeof acceptCaregiverInviteSchema>;
+
 // ---------- Admin ----------
 
 export const updateVerificationSchema = z.object({
@@ -335,4 +350,10 @@ export interface ApiResponses {
   "GET /admin/customers": AdminCustomerDTO[];
   "PATCH /admin/workers/:workerId/verification": WorkerProfileDTO;
   "POST /admin/demo/reset": { ok: true };
+  "POST /customers/me/caregivers/invite": CaregiverInviteDTO;
+  "GET /customers/me/caregivers": CaregiverLinkDTO[];
+  "DELETE /customers/me/caregivers/:caregiverId": void;
+  "POST /caregivers/me/links": CaregiverPersonDTO;
+  "GET /caregivers/me/people": CaregiverPersonDTO[];
+  "DELETE /caregivers/me/people/:customerId": void;
 }

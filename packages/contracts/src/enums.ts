@@ -10,6 +10,8 @@ function values<T extends Record<string, string>>(obj: T) {
 export const UserRole = {
   CUSTOMER: "CUSTOMER",
   WORKER: "WORKER",
+  /** A family member or caregiver linked to one or more customers (read-only). */
+  CAREGIVER: "CAREGIVER",
   ADMIN: "ADMIN",
 } as const;
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];

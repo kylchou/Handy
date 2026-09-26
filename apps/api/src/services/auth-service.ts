@@ -31,7 +31,7 @@ export class AuthService {
       const location = { address: body.address ?? null, latitude: body.latitude ?? null, longitude: body.longitude ?? null };
       if (body.role === "CUSTOMER") {
         await customerProfilesRepo.upsert(tx, user.id, location);
-      } else {
+      } else if (body.role === "WORKER") {
         // New workers start PENDING verification and are not matched until an admin verifies them.
         await workersRepo.createProfile(tx, { userId: user.id, ...location, verificationStatus: "PENDING" });
       }

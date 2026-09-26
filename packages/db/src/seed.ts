@@ -3,6 +3,8 @@ import type { QualificationLevel, ServiceCategoryCode, VerificationStatus } from
 import type { Database } from "./client";
 import { hashPassword } from "./password";
 import {
+  caregiverInvites,
+  caregiverLinks,
   conversations,
   customerProfiles,
   jobMessages,
@@ -99,6 +101,8 @@ const DEMO_WORKERS: DemoWorker[] = [
 
 const ADMIN = { role: "ADMIN" as const, firstName: "Ada", lastName: "Admin", email: "admin@handy.demo", phone: null };
 const CUSTOMER = { role: "CUSTOMER" as const, firstName: "Margaret", lastName: "Thompson", email: "margaret@handy.demo", phone: "404-555-0100" };
+/** Margaret's daughter (also her emergency contact), linked as her caregiver. */
+const CAREGIVER = { role: "CAREGIVER" as const, firstName: "Susan", lastName: "Thompson", email: "susan@handy.demo", phone: "404-555-0101" };
 const CUSTOMER_PROFILE = {
   address: "123 Main Street, Atlanta, GA",
   latitude: HOME.lat,
@@ -128,7 +132,7 @@ const workerProfile = (w: DemoWorker) => ({
 });
 
 /** All emails the seed creates. */
-export const DEMO_EMAILS = [ADMIN.email, CUSTOMER.email, ...DEMO_WORKERS.map((w) => workerUser(w).email)];
+export const DEMO_EMAILS = [ADMIN.email, CUSTOMER.email, CAREGIVER.email, ...DEMO_WORKERS.map((w) => workerUser(w).email)];
 
 async function insertWorkerServices(tx: Database, workerId: string, w: DemoWorker) {
   await tx.insert(workerQualifications).values(
@@ -202,6 +206,8 @@ export async function seed(db: Database, log: (msg: string) => void = console.lo
     await tx.insert(users).values({ ...ADMIN, passwordHash });
     const [customer] = await tx.insert(users).values({ ...CUSTOMER, passwordHash }).returning();
     await tx.insert(customerProfiles).values({ userId: customer!.id, ...CUSTOMER_PROFILE });
+    const [caregiver] = await tx.insert(users).values({ ...CAREGIVER, passwordHash }).returning();
+    await tx.insert(caregiverLinks).values({ customerId: customer!.id, caregiverId: caregiver!.id });
 
     const workerIds: Record<string, string> = {};
     for (const w of DEMO_WORKERS) {
@@ -213,7 +219,7 @@ export async function seed(db: Database, log: (msg: string) => void = console.lo
     await insertPastJob(tx, customer!.id, workerIds.Maria!);
   });
 
-  log(`Seeded ${SERVICE_CATEGORY_SEED.length} categories, 1 admin, 1 customer, ${DEMO_WORKERS.length} workers. Password for all: ${DEMO_PASSWORD}`);
+  log(`Seeded ${SERVICE_CATEGORY_SEED.length} categories, 1 admin, 1 customer, 1 caregiver, ${DEMO_WORKERS.length} workers. Password for all: ${DEMO_PASSWORD}`);
 }
 
 /**
@@ -223,6 +229,7 @@ export async function seed(db: Database, log: (msg: string) => void = console.lo
  * signed up after seeding.
  */
 export async function resetDemoData(db: Database): Promise<void> {
+  const passwordHash = await hashPassword(DEMO_PASSWORD);
   await db.transaction(async (tx) => {
     await tx.delete(notifications);
     await tx.delete(ratings);
@@ -232,6 +239,8 @@ export async function resetDemoData(db: Database): Promise<void> {
     await tx.delete(serviceRequests);
     await tx.delete(messages);
     await tx.delete(conversations);
+    await tx.delete(caregiverInvites);
+    await tx.delete(caregiverLinks);
     await tx.delete(users).where(notInArray(users.email, DEMO_EMAILS));
 
     const existing = await tx.select().from(users).where(inArray(users.email, DEMO_EMAILS));
@@ -245,6 +254,11 @@ export async function resetDemoData(db: Database): Promise<void> {
     const customerId = need(CUSTOMER.email);
     await tx.update(users).set(CUSTOMER).where(eq(users.id, customerId));
     await tx.update(customerProfiles).set(CUSTOMER_PROFILE).where(eq(customerProfiles.userId, customerId));
+    // Databases seeded before caregivers existed won't have Susan yet.
+    const caregiverId =
+      idByEmail.get(CAREGIVER.email) ?? (await tx.insert(users).values({ ...CAREGIVER, passwordHash }).returning())[0]!.id;
+    await tx.update(users).set(CAREGIVER).where(eq(users.id, caregiverId));
+    await tx.insert(caregiverLinks).values({ customerId, caregiverId });
 
     for (const w of DEMO_WORKERS) {
       const id = need(workerUser(w).email);
