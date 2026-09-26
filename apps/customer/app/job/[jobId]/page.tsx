@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import NavBar from "@/components/NavBar";
 import BigButton from "@/components/BigButton";
 import WorkerCard from "@/components/WorkerCard";
@@ -25,6 +25,7 @@ const ACTIVE = ["ACCEPTED", "EN_ROUTE", "ARRIVED", "IN_PROGRESS"];
 export default function JobPage() {
   useRequireLogin();
   const params = useParams<{ jobId: string }>();
+  const router = useRouter();
   const [job, setJob] = useState<JobDetailDTO | null>(null);
   const [messages, setMessages] = useState<JobMessageDTO[]>([]);
   const [text, setText] = useState("");
@@ -50,6 +51,7 @@ export default function JobPage() {
     // Status changes and new messages show up live.
     const stop = api.realtime.subscribe(
       (event) => {
+        if (event.type === "DEMO_RESET") return router.replace("/chat");
         if (!("jobId" in event.data) || event.data.jobId !== params.jobId) return;
         if (event.type === "MESSAGE_RECEIVED") {
           const incoming = event.data.message;
@@ -64,7 +66,7 @@ export default function JobPage() {
       active = false;
       stop();
     };
-  }, [params.jobId]);
+  }, [params.jobId, router]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });

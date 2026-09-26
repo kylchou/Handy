@@ -8,6 +8,7 @@
   "scripts": {
     "dev:api": "pnpm --filter @handy/api dev",
     "dev:customer": "pnpm --filter @handy/customer dev",
+    "demo": "pnpm --filter @handy/api demo",
     "start": "pnpm --filter @handy/api start",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r typecheck",

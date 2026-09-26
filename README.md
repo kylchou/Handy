@@ -77,6 +77,7 @@ Try not to edit someone else's folder without checking with them first so we don
 ```bash
 pnpm dev:api        # start the API
 pnpm dev:customer   # start the customer app on http://localhost:3000 (start the API first)
+pnpm demo reset     # demo controls: reset, autopilot on/off, scam, status (see docs/demo.md)
 pnpm test           # run the API tests
 pnpm typecheck      # typecheck everything
 pnpm db:generate    # make a new migration after changing packages/db/src/schema.ts
@@ -88,6 +89,7 @@ Every push to `main` and every PR runs typecheck and the tests on GitHub (once w
 ## Notes
 
 - All the endpoints and live events are documented in [docs/api.md](docs/api.md), and there are interactive docs at `/docs` while the API is running.
+- The demo script, checklist, and what to do if something breaks are in [docs/demo.md](docs/demo.md).
 - To put the API online (Render, Railway, Fly, or anywhere with Docker), see [docs/deploy.md](docs/deploy.md).
 - Between demo runs, log in as admin and call `POST /api/v1/admin/demo/reset` (or `api.admin.resetDemo()`) to put everything back to the starting data without logging anyone out. Arjun, this would be a good button on the admin dashboard.
 - Use `createApiClient` from `@handy/contracts` to call the backend instead of writing fetch calls (see the top of [docs/api.md](docs/api.md)).
