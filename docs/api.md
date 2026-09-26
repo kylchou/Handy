@@ -195,6 +195,8 @@ Saved messages like "James is on the way." so they're still there after a refres
 
 Each reminder only goes out once. It's skipped if the worker accepted after that point, since the "James is helping you" notification already covered it.
 
+**No-shows** (type `NO_SHOW`): if a job is still `ACCEPTED` 10 minutes after its start time (the worker never tapped "I'm On My Way"), the customer gets "James hasn't started heading over yet.", their caregivers get told, the worker gets a nudge to head out or cancel, and every admin gets "Possible no-show: ...". It only happens once per job. The job's `noShowAlertedAt` gets set, so the admin dashboard can highlight it.
+
 | Endpoint | Notes |
 | --- | --- |
 | `GET /notifications` | Latest 50. `?unread=true` for unread only. |

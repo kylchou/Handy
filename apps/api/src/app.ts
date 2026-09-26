@@ -192,6 +192,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
         .then(() => services.matching.expireOffers())
         .then(() => services.matching.expandStale())
         .then(() => services.jobs.sendReminders())
+        .then(() => services.jobs.checkNoShows())
         .catch((err) => app.log.error({ err }, "matching sweep failed"));
     }, interval);
     timer.unref();

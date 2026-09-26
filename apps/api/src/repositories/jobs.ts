@@ -51,6 +51,23 @@ export const jobsRepo = {
       .returning({ id: jobs.id });
     return rows.length > 0;
   },
+  /** ACCEPTED jobs between two dates that haven't been checked for a no-show yet. */
+  async awaitingNoShowCheck(db: Database, fromDate: string, toDate: string) {
+    return db
+      .select({ job: jobs, request: serviceRequests })
+      .from(jobs)
+      .innerJoin(serviceRequests, eq(serviceRequests.id, jobs.requestId))
+      .where(and(eq(jobs.status, "ACCEPTED"), isNull(jobs.noShowAlertedAt), between(serviceRequests.requestedDate, fromDate, toDate)));
+  },
+  /** Returns false if another sweep already flagged it. */
+  async claimNoShow(db: Database, jobId: string, at: Date) {
+    const rows = await db
+      .update(jobs)
+      .set({ noShowAlertedAt: at })
+      .where(and(eq(jobs.id, jobId), isNull(jobs.noShowAlertedAt), eq(jobs.status, "ACCEPTED")))
+      .returning({ id: jobs.id });
+    return rows.length > 0;
+  },
   async list(db: Database, filter: { workerId?: string; customerId?: string; status?: JobStatus } = {}) {
     const where: SQL[] = [];
     if (filter.workerId) where.push(eq(jobs.workerId, filter.workerId));

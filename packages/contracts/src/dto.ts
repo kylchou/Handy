@@ -197,6 +197,8 @@ export interface JobDTO {
   startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
+  /** Set when the worker hadn't headed out 10 minutes after the start time. Admins should follow up. */
+  noShowAlertedAt: string | null;
   finalPriceCents: number | null;
   createdAt: string;
   updatedAt: string;

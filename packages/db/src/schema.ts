@@ -236,6 +236,8 @@ export const jobs = pgTable(
     /** When the "tomorrow" / "in about an hour" reminders went out (or were skipped). */
     dayReminderSentAt: ts("day_reminder_sent_at"),
     hourReminderSentAt: ts("hour_reminder_sent_at"),
+    /** Set when the worker still hadn't headed out 10 minutes after the start time. */
+    noShowAlertedAt: ts("no_show_alerted_at"),
     finalPriceCents: integer("final_price_cents"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

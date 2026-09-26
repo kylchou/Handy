@@ -179,6 +179,7 @@ export function toJobDTO(j: JobRow): JobDTO {
     startedAt: iso(j.startedAt),
     completedAt: iso(j.completedAt),
     cancelledAt: iso(j.cancelledAt),
+    noShowAlertedAt: iso(j.noShowAlertedAt),
     finalPriceCents: j.finalPriceCents,
     createdAt: j.createdAt.toISOString(),
     updatedAt: j.updatedAt.toISOString(),

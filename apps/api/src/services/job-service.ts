@@ -40,6 +40,8 @@ const STATUS_TIMESTAMP: Partial<Record<JobStatus, keyof JobRow>> = {
 
 const MAX_ARRIVAL_CODE_ATTEMPTS = 5;
 const HOUR_MS = 60 * 60 * 1000;
+/** How late a worker can be to head out before everyone is told. */
+const NO_SHOW_GRACE_MS = 10 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 function isUniqueViolation(err: unknown): boolean {
@@ -362,6 +364,65 @@ export class JobService {
       );
       await this.notifier.notify(job.workerId, "JOB_REMINDER", `Your ${service.toLowerCase()} job for ${customerName} starts in about an hour.`, request.location, data);
     }
+  }
+
+  // ---------- No-shows ----------
+
+  /**
+   * Flags jobs where the worker still hasn't tapped "I'm on my way" 10 minutes
+   * after the start time, and tells the customer, their caregivers, the worker,
+   * and every admin. Once per job. Called on an interval.
+   */
+  async checkNoShows(now = new Date()): Promise<number> {
+    const { db, config } = this.ctx;
+    const today = todayIn(config.timezone, now);
+    const candidates = await jobsRepo.awaitingNoShowCheck(db, addDays(today, -1), today);
+    let flagged = 0;
+    for (const { job, request } of candidates) {
+      const start = zonedDateTimeToDate(request.requestedDate, request.requestedStartTime, config.timezone).getTime();
+      if (now.getTime() < start + NO_SHOW_GRACE_MS) continue;
+      if (!(await jobsRepo.claimNoShow(db, job.id, now))) continue;
+      flagged++;
+
+      const [worker, customer, admins, categories] = await Promise.all([
+        usersRepo.findById(db, job.workerId),
+        usersRepo.findById(db, request.customerId),
+        usersRepo.listByRole(db, "ADMIN"),
+        categoriesRepo.list(db),
+      ]);
+      const name = worker?.firstName ?? "Your helper";
+      const service = categories.find((c) => c.id === request.serviceCategoryId)?.name.toLowerCase() ?? "job";
+      const time = formatTime12h(request.requestedStartTime);
+      const customerName = customer ? `${customer.firstName} ${customer.lastName.charAt(0)}.` : "the customer";
+      const data = { jobId: job.id, requestId: request.id };
+
+      await this.notifier.notifyCustomer(
+        request.customerId,
+        "NO_SHOW",
+        `${name} hasn't started heading over yet.`,
+        `Your ${service} was supposed to start at ${time}. We've let our support team know and we're checking on it.`,
+        data,
+        (who) => ({ title: `${name} hasn't started heading to ${who}'s yet.`, body: `It was supposed to start at ${time}. Our support team is checking on it.` }),
+      );
+      await this.notifier.notify(
+        job.workerId,
+        "NO_SHOW",
+        `Your ${service} job for ${customerName} was supposed to start at ${time}.`,
+        `Tap "I'm On My Way" if you're heading there, or cancel so we can find someone else.`,
+        data,
+      );
+      for (const admin of admins) {
+        await this.notifier.notify(
+          admin.id,
+          "NO_SHOW",
+          `Possible no-show: ${worker ? `${worker.firstName} ${worker.lastName}` : "worker"} for ${customerName}`,
+          `${service} at ${time} on ${request.requestedDate}. The worker hasn't marked themselves on the way.`,
+          data,
+        );
+      }
+    }
+    if (flagged) this.ctx.log.warn({ flagged }, "possible no-shows");
+    return flagged;
   }
 
   // ---------- Chat ----------

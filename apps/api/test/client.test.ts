@@ -387,6 +387,61 @@ describe("API client", () => {
     });
   });
 
+  describe("no-shows", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const noShows = async (api: ApiClient) => (await api.notifications.list()).filter((n) => n.type === "NO_SHOW");
+
+    it("flags a worker who hasn't headed out 10 minutes after the start", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const admin = await login("admin@handy.demo");
+      const date = addDays(todayIn("America/New_York"), 2);
+
+      const book = async (time: string) => {
+        const { conversation } = await margaret.conversations.create();
+        const { request } = await margaret.requests.create({
+          conversationId: conversation.id,
+          serviceCategoryId: "MOVING_ASSISTANCE",
+          description: "Move a bookcase",
+          location: "123 Main Street, Atlanta, GA",
+          requestedDate: date,
+          requestedStartTime: time,
+        });
+        const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+        return james.jobs.acceptOffer(offer.id);
+      };
+      const late = await book("17:00");
+      const onTime = await book("19:00");
+      await james.jobs.updateStatus(onTime.id, "EN_ROUTE");
+
+      const start = (time: string) => zonedDateTimeToDate(date, time, "America/New_York").getTime();
+      const MIN = 60 * 1000;
+
+      // Still inside the grace period.
+      await server.services.jobs.checkNoShows(new Date(start("17:00") + 5 * MIN));
+      expect((await margaret.jobs.get(late.id)).noShowAlertedAt).toBeNull();
+
+      await server.services.jobs.checkNoShows(new Date(start("17:00") + 11 * MIN));
+      expect((await margaret.jobs.get(late.id)).noShowAlertedAt).not.toBeNull();
+      const forJob = (list: Awaited<ReturnType<typeof noShows>>) => list.filter((n) => n.data.jobId === late.id);
+
+      expect(forJob(await noShows(margaret))[0]!.title).toBe("James hasn't started heading over yet.");
+      expect(forJob(await noShows(susan))[0]!.title).toBe("James hasn't started heading to Margaret's yet.");
+      expect(forJob(await noShows(james))[0]!.title).toBe("Your moving help job for Margaret T. was supposed to start at 5 PM.");
+      expect(forJob(await noShows(admin))[0]!.title).toBe("Possible no-show: James Robinson for Margaret T.");
+
+      // Once only, and a worker who's already on the way is never flagged.
+      await server.services.jobs.checkNoShows(new Date(start("19:00") + 30 * MIN));
+      expect(forJob(await noShows(margaret))).toHaveLength(1);
+      expect((await margaret.jobs.get(onTime.id)).noShowAlertedAt).toBeNull();
+    });
+  });
+
   it("resets the demo data without logging anyone out", async () => {
     const admin = client();
     const margaret = client();
