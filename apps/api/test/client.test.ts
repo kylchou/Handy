@@ -16,7 +16,7 @@ const client = (): ApiClient => createApiClient({ baseUrl });
 beforeAll(async () => {
   handle = await createTestDb();
   server = await buildApp({
-    config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false }),
+    config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", geocoder: "off", rateLimitEnabled: false }),
     dbHandle: handle,
     logger: false,
     backgroundJobs: false,
@@ -650,7 +650,7 @@ describe("API client", () => {
 
   it("refuses to reset when demo reset is turned off", async () => {
     const locked = await buildApp({
-      config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false, allowDemoReset: false }),
+      config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", geocoder: "off", rateLimitEnabled: false, allowDemoReset: false }),
       dbHandle: handle,
       logger: false,
       backgroundJobs: false,

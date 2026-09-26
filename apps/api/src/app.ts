@@ -9,6 +9,7 @@ import type { AppConfig } from "./config";
 import { registerApiDocs } from "./docs/openapi";
 import { loadIntegrations } from "./integrations";
 import { ApiError } from "./lib/errors";
+import { NominatimGeocoder, noGeocoder, type Geocoder } from "./lib/geocoder";
 import { createRateLimits } from "./lib/rate-limits";
 import { authenticate, newJti, requireRole, TokenRevocations } from "./middleware/auth";
 import { adminRoutes } from "./routes/admin";
@@ -36,6 +37,8 @@ export interface BuildAppOptions {
   dbHandle?: DbHandle;
   ai?: AIService;
   matching?: MatchingService;
+  /** Defaults to OpenStreetMap, or no lookups when GEOCODER=off. */
+  geocoder?: Geocoder;
   logger?: FastifyServerOptions["logger"];
   /** Periodically widen the search for requests nobody has accepted. Default true. */
   backgroundJobs?: boolean;
@@ -96,7 +99,22 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
   });
 
   const services = createServices(
-    { db: dbHandle.db, config, bus, ai: integrations.ai, matching: integrations.matching, log: app.log },
+    {
+      db: dbHandle.db,
+      config,
+      bus,
+      ai: integrations.ai,
+      matching: integrations.matching,
+      geocoder:
+        opts.geocoder ??
+        (config.geocoder === "off"
+          ? noGeocoder
+          : new NominatimGeocoder({
+              contact: config.geocoderContact || "hackathon project",
+              onError: (err) => app.log.warn({ err }, "address lookup failed"),
+            })),
+      log: app.log,
+    },
     (actor) => {
       const token = app.jwt.sign({ sub: actor.id, role: actor.role, jti: newJti() });
       const { exp } = app.jwt.decode<{ exp: number }>(token)!;

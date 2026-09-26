@@ -10,7 +10,7 @@ let handle: DbHandle;
 beforeAll(async () => {
   handle = await createTestDb();
   server = await buildApp({
-    config: loadConfig({ seedOnStart: false, jwtSecret: "docs-test", aiServiceModule: "", matchingServiceModule: "", docsEnabled: true }),
+    config: loadConfig({ seedOnStart: false, jwtSecret: "docs-test", aiServiceModule: "", matchingServiceModule: "", geocoder: "off", docsEnabled: true }),
     dbHandle: handle,
     logger: false,
     backgroundJobs: false,

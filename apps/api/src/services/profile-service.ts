@@ -15,6 +15,7 @@ import type {
 } from "@handy/contracts";
 import { updateQualificationsSchema } from "@handy/contracts";
 import { notFound } from "../lib/errors";
+import { fillCoordinates } from "../lib/geocoder";
 import { categoriesRepo } from "../repositories/categories";
 import { jobsRepo, ratingsRepo } from "../repositories/jobs";
 import { requestsRepo } from "../repositories/requests";
@@ -42,7 +43,8 @@ export class ProfileService {
   }
 
   async updateCustomerProfile(actor: Actor, body: UpdateCustomerProfileBody): Promise<CustomerProfileDTO> {
-    return toCustomerProfileDTO(await customerProfilesRepo.upsert(this.ctx.db, actor.id, body));
+    const withCoords = await fillCoordinates(this.ctx.geocoder, body);
+    return toCustomerProfileDTO(await customerProfilesRepo.upsert(this.ctx.db, actor.id, withCoords));
   }
 
   /** Newest first. Used by the customer and by their caregivers. */
@@ -117,7 +119,7 @@ export class ProfileService {
   }
 
   async updateWorkerProfile(actor: Actor, body: UpdateWorkerProfileBody): Promise<WorkerProfileDTO> {
-    await workersRepo.updateProfile(this.ctx.db, actor.id, body);
+    await workersRepo.updateProfile(this.ctx.db, actor.id, await fillCoordinates(this.ctx.geocoder, body));
     return this.getWorkerProfile(actor.id);
   }
 

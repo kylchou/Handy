@@ -109,6 +109,8 @@ If `emergency` isn't null, show it clearly. It tells the user to call 911, and t
 | `POST /requests/:id/cancel` | customer, admin | Only while `SEARCHING` |
 | `GET /requests/:id/matches` | customer, admin | Ranked workers with scores and reasons. Mostly for the admin dashboard. |
 
+**Where the job is.** If the request's `location` is the customer's home address, we use the coordinates on their profile. Anywhere else gets looked up with OpenStreetMap, so distances and service radius checks use the real place. Saving an address on a customer or worker profile (or at signup) fills in `latitude`/`longitude` the same way, so you don't need to send them. Set `GEOCODER_CONTACT` in `.env` to an email or URL, their usage policy asks for it.
+
 **Booking someone again.** Send `preferredWorkerId` when creating a request (or the AI sets it when the customer says "Can James come back?" or "same person as last time"). The request goes to that worker alone first. If they decline or don't answer in time, it goes to everyone like normal. If they can't do it at all (not available, doesn't do that kind of job), the customer gets told right away and it goes out to everyone. Workers the customer rated 4–5 stars also get a bump in matching, and workers they rated 1–2 stars never get their jobs again.
 
 Request statuses: `SEARCHING -> MATCHED -> COMPLETED`, or `CANCELLED`, or `EXPIRED` if nobody accepted before the requested time window ended. When a request expires, the customer gets a `REQUEST_EXPIRED` event and a notification asking if they want to pick another time. Requests for a time that's already passed get rejected with a 400.
@@ -269,6 +271,6 @@ The backend also has its own emergency check on every message and request, separ
 
 ## Known limitations
 
-- No geocoding, so distance uses the customer's home location even if the job is somewhere else.
+- Address lookup uses OpenStreetMap's free service, which only allows 1 lookup per second. That's fine for a demo but a real launch would want a paid geocoder. If a lookup fails, the job falls back to the customer's home location.
 - Payments are fake. Price is the category's base price, +$10 if urgent. Platform fee is `PLATFORM_FEE_CENTS`.
 - Live updates and logout tracking are stored in memory, so it only works with one API server running.

@@ -1,6 +1,7 @@
 import { hashPassword, verifyPassword } from "@handy/db";
 import type { AuthResponse, LoginBody, MeResponse, SignupBody } from "@handy/contracts";
 import { ApiError } from "../lib/errors";
+import { fillCoordinates } from "../lib/geocoder";
 import { customerProfilesRepo, usersRepo } from "../repositories/users";
 import { workersRepo } from "../repositories/workers";
 import type { Actor, ServiceContext } from "./context";
@@ -19,6 +20,7 @@ export class AuthService {
       throw new ApiError("CONFLICT", "An account with this email already exists. Try logging in instead.");
     }
     const passwordHash = await hashPassword(body.password);
+    const place = await fillCoordinates(this.ctx.geocoder, body);
     const user = await this.ctx.db.transaction(async (tx) => {
       const user = await usersRepo.create(tx, {
         role: body.role,
@@ -28,7 +30,7 @@ export class AuthService {
         phone: body.phone ?? null,
         passwordHash,
       });
-      const location = { address: body.address ?? null, latitude: body.latitude ?? null, longitude: body.longitude ?? null };
+      const location = { address: place.address ?? null, latitude: place.latitude ?? null, longitude: place.longitude ?? null };
       if (body.role === "CUSTOMER") {
         await customerProfilesRepo.upsert(tx, user.id, location);
       } else if (body.role === "WORKER") {

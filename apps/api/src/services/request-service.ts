@@ -6,8 +6,9 @@ import type {
   ServiceRequestStatus,
 } from "@handy/contracts";
 import { REQUIRED_REQUEST_FIELDS } from "@handy/contracts";
-import type { ServiceRequestRow } from "@handy/db";
+import type { CustomerProfileRow, ServiceRequestRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
+import { sameAddress } from "../lib/geo";
 import { EMERGENCY_GUIDANCE, detectEmergency } from "../lib/safety";
 import { addMinutes, friendlyDate, nowTimeIn, todayIn } from "../lib/time";
 import { categoriesRepo } from "../repositories/categories";
@@ -77,7 +78,7 @@ export class RequestService {
       if (preferred?.role !== "WORKER") throw new ApiError("VALIDATION_FAILED", "We couldn't find that helper.");
     }
 
-    // No geocoder yet: the customer's home coordinates stand in for the job site.
+    const coords = await this.jobSiteCoordinates(draft.location!, profile);
     const request = await db.transaction(async (tx) => {
       const created = await requestsRepo.create(tx, {
         customerId: actor.id,
@@ -85,8 +86,8 @@ export class RequestService {
         serviceCategoryId: category.id,
         description: draft.description!,
         location: draft.location!,
-        latitude: profile?.latitude ?? null,
-        longitude: profile?.longitude ?? null,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
         requestedDate: draft.requestedDate!,
         requestedStartTime: draft.requestedStartTime!,
         requestedEndTime: draft.requestedEndTime!,
@@ -110,6 +111,18 @@ export class RequestService {
     const notifiedWorkerCount = await this.matching.broadcast(request.id);
     const fresh = (await requestsRepo.get(db, request.id))!;
     return { request: await requestView(this.ctx, fresh), notifiedWorkerCount };
+  }
+
+  /**
+   * Where the job actually is. At home we already know the coordinates; anywhere
+   * else gets looked up. If the lookup fails we fall back to home, which is
+   * close enough for matching.
+   */
+  private async jobSiteCoordinates(location: string, profile: CustomerProfileRow | null) {
+    const home = { latitude: profile?.latitude ?? null, longitude: profile?.longitude ?? null };
+    if (sameAddress(location, profile?.address)) return home;
+    const found = await this.ctx.geocoder.geocode(location);
+    return found ?? home;
   }
 
   async list(actor: Actor, status?: ServiceRequestStatus): Promise<ServiceRequestDTO[]> {

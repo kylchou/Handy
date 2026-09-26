@@ -14,7 +14,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 ## What the backend handles
 
 - AI chat that turns a conversation into a job request
-- Matching workers by qualifications, schedule, distance, rating, and experience
+- Matching workers by qualifications, schedule, distance, rating, and experience. Addresses get looked up on a map (OpenStreetMap), so "2.4 miles away" is real even when the job isn't at the customer's house
 - Only verified workers get jobs
 - "Can James come back?": customers can ask for someone who helped before (in the chat or with a button), and that person gets asked first. People they rated 1–2 stars never get their jobs again
 - Workers can't accept two jobs at the same time
