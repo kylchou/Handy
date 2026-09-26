@@ -402,6 +402,8 @@ export interface PastWorkerDTO {
 export interface AutopilotStatusDTO {
   enabled: boolean;
   stepSeconds: number;
+  /** True while accepted jobs are waiting for the go-ahead. */
+  hold: boolean;
   /** Jobs the autopilot accepted and is still moving along. */
   activeJobIds: string[];
 }

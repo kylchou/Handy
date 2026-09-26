@@ -77,7 +77,7 @@ Try not to edit someone else's folder without checking with them first so we don
 ```bash
 pnpm dev:api        # start the API
 pnpm dev:customer   # start the customer app on http://localhost:3000 (start the API first)
-pnpm demo reset     # demo controls: reset, autopilot on/off, scam, status (see docs/demo.md)
+pnpm demo reset     # demo controls: reset, autopilot on/off, go, scam, status (see docs/demo.md)
 pnpm test           # run the API tests
 pnpm typecheck      # typecheck everything
 pnpm db:generate    # make a new migration after changing packages/db/src/schema.ts

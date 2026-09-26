@@ -88,6 +88,25 @@ describe("demo autopilot", () => {
     expect((await margaret.requests.get(after.id)).status).toBe("SEARCHING");
   });
 
+  it("holds accepted jobs until hold is turned off", async () => {
+    const admin = await login("admin@handy.demo");
+    const margaret = await login("margaret@handy.demo");
+    expect(await admin.admin.setAutopilot({ enabled: true, stepSeconds: 60, hold: true })).toMatchObject({ enabled: true, hold: true });
+    const request = await makeRequest(margaret, "18:00");
+
+    await step();
+    const { jobId } = await margaret.requests.get(request.id);
+    expect(jobId).toBeTruthy();
+    await step();
+    await step();
+    expect((await margaret.jobs.get(jobId!)).status).toBe("ACCEPTED"); // still waiting
+
+    await admin.admin.setAutopilot({ enabled: true, hold: false });
+    await step();
+    expect((await margaret.jobs.get(jobId!)).status).toBe("EN_ROUTE"); // moves right away once released
+    await admin.admin.setAutopilot({ enabled: false });
+  });
+
   it("is off when demo tools are turned off", async () => {
     const locked = await buildApp({
       config: loadConfig({ seedOnStart: false, jwtSecret: "autopilot-test", aiServiceModule: "", matchingServiceModule: "", allowDemoReset: false, rateLimitEnabled: false, geocoder: "off" }),

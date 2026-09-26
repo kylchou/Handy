@@ -2,7 +2,8 @@
  * Demo-day controls, so nobody has to click around /docs in front of judges.
  *
  *   pnpm demo reset              put everything back to the starting demo data
- *   pnpm demo autopilot on [5]   fake worker accepts and finishes new requests, 5 seconds per step
+ *   pnpm demo autopilot on [5]   fake worker accepts new requests, then waits at "accepted"
+ *   pnpm demo go                 the waiting job moves along: on the way, arrived, working, done (5 seconds per step)
  *   pnpm demo autopilot off
  *   pnpm demo scam               the worker on the newest active job asks to be paid on Venmo, to show the scam warning
  *   pnpm demo status             is the API up, and is the autopilot on
@@ -21,10 +22,20 @@ async function main() {
 
   if (command === "reset") {
     await api.admin.resetDemo();
+    // Ready for the next run: the next job waits at "accepted" again.
+    if ((await api.admin.autopilot()).enabled) await api.admin.setAutopilot({ enabled: true, hold: true });
     console.log("Demo data reset. Refresh the customer app to start fresh.");
   } else if (command === "autopilot" && (arg === "on" || arg === "off")) {
-    const status = await api.admin.setAutopilot({ enabled: arg === "on", ...(seconds && { stepSeconds: Number(seconds) }) });
-    console.log(status.enabled ? `Autopilot on, ${status.stepSeconds} seconds per step.` : "Autopilot off.");
+    const on = arg === "on";
+    const status = await api.admin.setAutopilot({ enabled: on, ...(on && { hold: true }), ...(seconds && { stepSeconds: Number(seconds) }) });
+    console.log(
+      status.enabled
+        ? `Autopilot on. New requests get accepted, then wait until you run "pnpm demo go" (${status.stepSeconds} seconds per step after that).`
+        : "Autopilot off.",
+    );
+  } else if (command === "go") {
+    const status = await api.admin.setAutopilot({ enabled: true, hold: false });
+    console.log(`Going. The job moves along every ${status.stepSeconds} seconds until it's done.`);
   } else if (command === "scam") {
     const active = (await api.admin.jobs())
       .filter((j) => ["ACCEPTED", "EN_ROUTE", "ARRIVED", "IN_PROGRESS"].includes(j.status))
@@ -38,9 +49,10 @@ async function main() {
     console.log(`${job.worker.firstName} sent a Venmo request on the ${job.request.serviceCategoryId.toLowerCase().replace(/_/g, " ")} job. The customer app shows the warning.`);
   } else if (command === "status") {
     const status = await api.admin.autopilot();
-    console.log(`API is up at ${baseUrl}. Autopilot is ${status.enabled ? `on (${status.stepSeconds}s per step)` : "off"}.`);
+    const state = status.enabled ? `on (${status.hold ? "waiting for pnpm demo go" : `${status.stepSeconds}s per step`})` : "off";
+    console.log(`API is up at ${baseUrl}. Autopilot is ${state}.`);
   } else {
-    console.log("Usage: pnpm demo reset | autopilot on [seconds] | autopilot off | scam | status");
+    console.log("Usage: pnpm demo reset | autopilot on [seconds] | go | scam | autopilot off | status");
     process.exitCode = 1;
   }
 }
