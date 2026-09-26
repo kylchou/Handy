@@ -2,6 +2,43 @@
 
 Base URL is `http://localhost:4000/api/v1`. All the types mentioned here come from `@handy/contracts`. If you want the exact response type for an endpoint, check `ApiResponses` in [packages/contracts/src/api.ts](../packages/contracts/src/api.ts).
 
+## Using the API client
+
+You don't need to write fetch calls yourself. `@handy/contracts` has a typed client that covers every endpoint in this doc:
+
+```ts
+import { createApiClient, ApiRequestError } from "@handy/contracts";
+
+const api = createApiClient({
+  baseUrl: "http://localhost:4000",
+  token: localStorage.getItem("token"),
+  onTokenChange: (t) => (t ? localStorage.setItem("token", t) : localStorage.removeItem("token")),
+  onUnauthorized: () => router.push("/login"),
+});
+
+await api.auth.login({ email, password }); // saves the token for you
+const offers = await api.jobs.available();
+await api.jobs.acceptOffer(offers[0].id);
+
+try {
+  await api.requests.create({ conversationId });
+} catch (err) {
+  if (err instanceof ApiRequestError) showError(err.message); // plain English, fine to show
+}
+
+// live updates, returns a function that disconnects
+const stop = api.realtime.subscribe((event) => {
+  if (event.type === "WORKER_EN_ROUTE") setStatus("On the way");
+});
+```
+
+A few things to know:
+
+- Login and signup save the token, logout clears it. Use `onTokenChange` to keep it in localStorage.
+- Any error throws an `ApiRequestError` with `status`, `code`, and `message`. If the server can't be reached you get `code: "NETWORK_ERROR"` and `status: 0`.
+- `realtime.subscribe` uses SSE by default. Pass `{ transport: "ws" }` for WebSocket.
+- The method names follow the endpoint tables below, e.g. `api.requests.cancel(id)` is `POST /requests/:id/cancel`.
+
 ## Basics
 
 - **Auth:** signup/login gives you a token. Send it as `Authorization: Bearer <token>`.

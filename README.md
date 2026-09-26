@@ -25,6 +25,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Customer and worker chat, so nobody has to share phone numbers
 - Live updates over SSE or WebSockets, plus saved notifications
 - Ratings, job history, worker earnings, and admin stats
+- A typed API client in `@handy/contracts` for the frontends
 
 ## Setup
 
@@ -74,5 +75,6 @@ pnpm db:reset       # wipe the database and reseed it
 ## Notes
 
 - All the endpoints and live events are documented in [docs/api.md](docs/api.md).
+- Use `createApiClient` from `@handy/contracts` to call the backend instead of writing fetch calls (see the top of [docs/api.md](docs/api.md)).
 - Import shared types from `@handy/contracts` instead of making your own, so everyone stays in sync.
 - If you're using the shared packages in a Next.js app, add `transpilePackages: ["@handy/contracts"]` to `next.config.js`.

@@ -5,3 +5,4 @@ export * from "./ai";
 export * from "./matching";
 export * from "./events";
 export * from "./job-status";
+export * from "./client";
