@@ -17,12 +17,14 @@ import { categoriesRepo } from "../repositories/categories";
 import { jobMessagesRepo, jobsRepo, ratingsRepo } from "../repositories/jobs";
 import { offersRepo } from "../repositories/offers";
 import { requestsRepo } from "../repositories/requests";
+import { schedulesRepo } from "../repositories/schedules";
 import { usersRepo } from "../repositories/users";
 import { workersRepo } from "../repositories/workers";
 import { Notifier, type Actor, type ServiceContext } from "./context";
 import { toJobMessageDTO, toRatingDTO } from "./mappers";
 import type { MatchingOrchestrator } from "./matching-orchestrator";
 import { jobDetail, jobDetails, offerViews } from "./views";
+import { LOW_RATING } from "./worker-history";
 
 const STATUS_EVENT: Partial<Record<JobStatus, RealtimeEvent["type"]>> = {
   EN_ROUTE: "WORKER_EN_ROUTE",
@@ -516,6 +518,14 @@ export class JobService {
     } catch (err) {
       if (isUniqueViolation(err)) throw new ApiError("CONFLICT", "You've already rated this job. Thank you!");
       throw err;
+    }
+    // For repeating requests, a good rating means "send them again next time", a bad one means don't.
+    if (request.scheduleId) {
+      const schedule = await schedulesRepo.get(this.ctx.db, request.scheduleId);
+      if (schedule && body.score >= 4) await schedulesRepo.update(this.ctx.db, schedule.id, { preferredWorkerId: job.workerId });
+      else if (schedule && body.score <= LOW_RATING && schedule.preferredWorkerId === job.workerId) {
+        await schedulesRepo.update(this.ctx.db, schedule.id, { preferredWorkerId: null });
+      }
     }
     this.notifier.emit([job.workerId], "RATING_SUBMITTED", { jobId, workerId: job.workerId, score: body.score });
     await this.notifier.notify(job.workerId, "RATING_SUBMITTED", `You received a ${body.score}-star rating.`, body.comment ?? null, { jobId });

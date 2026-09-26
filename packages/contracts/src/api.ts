@@ -24,6 +24,7 @@ import type {
   JobOfferDTO,
   NotificationDTO,
   PastWorkerDTO,
+  RecurringScheduleDTO,
   RatingDTO,
   ServiceCategoryDTO,
   ServiceRequestDTO,
@@ -246,6 +247,8 @@ export const createServiceRequestSchema = z.object({
   specialRequirements: z.array(z.string().max(500)).max(20).optional(),
   /** Ask this worker first (e.g. someone from GET /customers/me/past-workers). */
   preferredWorkerId: z.string().uuid().nullable().optional(),
+  /** Make it repeat on the same day and time. */
+  repeat: z.enum(["WEEKLY", "BIWEEKLY"]).nullable().optional(),
 });
 export type CreateServiceRequestBody = z.infer<typeof createServiceRequestSchema>;
 
@@ -323,6 +326,8 @@ export interface ApiResponses {
   "PUT /customers/me/profile": CustomerProfileDTO;
   "GET /customers/me/history": CustomerHistoryItemDTO[];
   "GET /customers/me/past-workers": PastWorkerDTO[];
+  "GET /customers/me/schedules": RecurringScheduleDTO[];
+  "DELETE /customers/me/schedules/:scheduleId": RecurringScheduleDTO;
   "GET /workers/me/profile": WorkerProfileDTO;
   "PUT /workers/me/profile": WorkerProfileDTO;
   "PUT /workers/me/qualifications": WorkerProfileDTO;

@@ -211,6 +211,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
         .then(() => services.matching.expandStale())
         .then(() => services.jobs.sendReminders())
         .then(() => services.jobs.checkNoShows())
+        .then(() => services.schedules.postUpcomingVisits())
         .catch((err) => app.log.error({ err }, "matching sweep failed"));
     }, interval);
     timer.unref();

@@ -147,6 +147,30 @@ export interface ServiceRequestDraft {
   specialRequirements?: string[] | null;
   /** A worker the customer wants again ("Can James come back?"). They're asked first. */
   preferredWorkerId?: string | null;
+  /** Set when they ask for it to happen regularly ("every Saturday"). */
+  repeat?: RepeatFrequency | null;
+}
+
+export type RepeatFrequency = "WEEKLY" | "BIWEEKLY";
+
+/** A request that repeats. Each visit becomes its own ServiceRequest a few days ahead. */
+export interface RecurringScheduleDTO {
+  id: string;
+  customerId: string;
+  frequency: RepeatFrequency;
+  serviceCategoryId: ServiceCategoryCode;
+  description: string;
+  location: string;
+  /** 0 = Sunday. */
+  dayOfWeek: number;
+  startTime: string;
+  endTime: string;
+  /** Whoever did the last visit and got a good rating is asked first next time. */
+  preferredWorkerId: string | null;
+  /** Date of the next visit that hasn't been created yet. */
+  nextDate: string;
+  active: boolean;
+  createdAt: string;
 }
 
 export interface ConversationDTO {
@@ -179,6 +203,8 @@ export interface ServiceRequestDTO {
   specialRequirements: string[];
   /** Offered to this worker alone first; if they pass, it goes to everyone. */
   preferredWorkerId: string | null;
+  /** Set when this visit came from a repeating request. */
+  scheduleId: string | null;
   status: ServiceRequestStatus;
   estimatedPriceCents: number;
   platformFeeCents: number;

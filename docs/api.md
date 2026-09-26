@@ -83,6 +83,8 @@ A few things to know:
 | `GET /customers/me/profile` | |
 | `PUT /customers/me/profile` | Address, coordinates, accessibility/communication preferences, emergency contact |
 | `GET /customers/me/history` | Everything for the history screen (service, worker, date, status, price, rating) |
+| `GET /customers/me/schedules` | Their repeating requests |
+| `DELETE /customers/me/schedules/:scheduleId` | Stop a repeating request |
 | `GET /customers/me/past-workers` | Everyone who's helped this customer before, with their last rating. For a "Book James again" button. |
 
 ### AI chat
@@ -110,6 +112,8 @@ If `emergency` isn't null, show it clearly. It tells the user to call 911, and t
 | `GET /requests/:id/matches` | customer, admin | Ranked workers with scores and reasons. Mostly for the admin dashboard. |
 
 **Where the job is.** If the request's `location` is the customer's home address, we use the coordinates on their profile. Anywhere else gets looked up with OpenStreetMap, so distances and service radius checks use the real place. Saving an address on a customer or worker profile (or at signup) fills in `latitude`/`longitude` the same way, so you don't need to send them. Set `GEOCODER_CONTACT` in `.env` to an email or URL, their usage policy asks for it.
+
+**Repeating requests.** Send `repeat: "WEEKLY"` or `repeat: "BIWEEKLY"` with `POST /requests` (or the AI sets it when they say "every Saturday" or "every other week"). That request becomes the first visit, and each visit after that gets posted to workers 3 days ahead with the same day, time, and details. Whoever did the last visit and got 4 or 5 stars is asked first next time, so it tends to be the same helper each week. Visits have a `scheduleId`. `GET /customers/me/schedules` lists them and `DELETE /customers/me/schedules/:id` stops one (already-posted visits stay booked). Cancelling one visit doesn't stop the rest.
 
 **Booking someone again.** Send `preferredWorkerId` when creating a request (or the AI sets it when the customer says "Can James come back?" or "same person as last time"). The request goes to that worker alone first. If they decline or don't answer in time, it goes to everyone like normal. If they can't do it at all (not available, doesn't do that kind of job), the customer gets told right away and it goes out to everyone. Workers the customer rated 4–5 stars also get a bump in matching, and workers they rated 1–2 stars never get their jobs again.
 

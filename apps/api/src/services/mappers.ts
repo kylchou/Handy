@@ -159,6 +159,7 @@ export function toRequestDTO(r: ServiceRequestRow, pendingOfferCount: number, jo
     urgency: r.urgency,
     specialRequirements: r.specialRequirements,
     preferredWorkerId: r.preferredWorkerId,
+    scheduleId: r.scheduleId,
     status: r.status,
     estimatedPriceCents: r.estimatedPriceCents,
     platformFeeCents: r.platformFeeCents,

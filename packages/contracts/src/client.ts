@@ -157,6 +157,10 @@ export function createApiClient(options: ApiClientOptions) {
       history: (): R<"GET /customers/me/history"> => get("/customers/me/history"),
       /** People who've helped before, for "Book James again". */
       pastWorkers: (): R<"GET /customers/me/past-workers"> => get("/customers/me/past-workers"),
+      /** Repeating requests ("every Saturday"). */
+      schedules: (): R<"GET /customers/me/schedules"> => get("/customers/me/schedules"),
+      /** Stops a repeating request. Visits already booked stay booked. */
+      stopSchedule: (scheduleId: string): R<"DELETE /customers/me/schedules/:scheduleId"> => del(`/customers/me/schedules/${id(scheduleId)}`),
       /** A 6-character code to give a family member so they can link as a caregiver. */
       createCaregiverInvite: (): R<"POST /customers/me/caregivers/invite"> => post("/customers/me/caregivers/invite"),
       caregivers: (): R<"GET /customers/me/caregivers"> => get("/customers/me/caregivers"),

@@ -13,6 +13,7 @@ import {
   messages,
   notifications,
   ratings,
+  recurringSchedules,
   serviceCategories,
   serviceRequests,
   users,
@@ -237,6 +238,7 @@ export async function resetDemoData(db: Database): Promise<void> {
     await tx.delete(jobs);
     await tx.delete(jobOffers);
     await tx.delete(serviceRequests);
+    await tx.delete(recurringSchedules);
     await tx.delete(messages);
     await tx.delete(conversations);
     await tx.delete(caregiverInvites);

@@ -86,6 +86,10 @@ export class FallbackAIService implements AIService {
     if (/\b(urgent|asap|right away|as soon as possible|immediately)\b/.test(lower)) set("urgency", "HIGH");
     if (!draft.urgency) set("urgency", "NORMAL");
 
+    // "every Saturday", "weekly", "every other week"
+    if (/\b(every other (week|\w+day)|every (2|two) weeks|bi-?weekly)\b/.test(lower)) set("repeat", "BIWEEKLY");
+    else if (/\b(every (week|\w+day)|weekly|once a week)\b/.test(lower)) set("repeat", "WEEKLY");
+
     const missingInformation = missing(draft);
     const readyToSubmit = missingInformation.length === 0;
 
@@ -112,6 +116,7 @@ export class FallbackAIService implements AIService {
           `around ${formatTime12h(draft.requestedStartTime!)} at ${draft.location}. ` +
           `Details: ${draft.description}.` +
           (preferredName ? ` I'll ask ${preferredName} first.` : "") +
+          (draft.repeat ? ` It'll repeat ${draft.repeat === "WEEKLY" ? "every week" : "every 2 weeks"}.` : "") +
           " Would you like me to find someone?";
       }
     } else {

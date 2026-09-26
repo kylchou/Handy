@@ -608,6 +608,103 @@ describe("API client", () => {
     });
   });
 
+  describe("repeating requests", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const noonOn = (date: string) => new Date(`${date}T16:00:00Z`); // noon Eastern
+
+    it("sets up 'every Saturday' from the chat", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const { conversation } = await margaret.conversations.create();
+      const first = await margaret.conversations.sendMessage(conversation.id, "Can someone mow my lawn every Saturday morning?");
+      expect(first.conversation.draft).toMatchObject({ repeat: "WEEKLY", serviceCategoryId: "LAWN_CARE", requestedStartTime: "09:00" });
+      const ready = await margaret.conversations.sendMessage(conversation.id, "Yes, at my home");
+      expect(ready.assistantMessage.content).toContain("It'll repeat every week.");
+
+      const { request } = await margaret.requests.create({ conversationId: conversation.id });
+      expect(request.scheduleId).not.toBeNull();
+      const schedule = (await margaret.customers.schedules()).find((s) => s.id === request.scheduleId)!;
+      expect(schedule).toMatchObject({ frequency: "WEEKLY", dayOfWeek: 6, startTime: "09:00", active: true, nextDate: addDays(request.requestedDate, 7) });
+    });
+
+    it("posts each visit ahead of time and asks last week's helper first", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const maria = await login("maria@handy.demo");
+      const david = await login("david@handy.demo");
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "ERRANDS",
+        description: "Weekly grocery pickup",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 1),
+        requestedStartTime: "13:00",
+        repeat: "WEEKLY",
+      });
+
+      // Maria does the first one and gets 5 stars.
+      const offer = (await maria.jobs.available()).find((o) => o.requestId === request.id)!;
+      const job = await maria.jobs.acceptOffer(offer.id);
+      await maria.jobs.updateStatus(job.id, "EN_ROUTE");
+      await maria.jobs.arrive(job.id, (await margaret.jobs.get(job.id)).arrivalCode!);
+      await maria.jobs.updateStatus(job.id, "IN_PROGRESS");
+      await maria.jobs.updateStatus(job.id, "COMPLETED");
+      await margaret.jobs.rate(job.id, { score: 5 });
+      const schedule = (await margaret.customers.schedules()).find((s) => s.id === request.scheduleId)!;
+      expect(schedule.preferredWorkerId).toBe((await maria.auth.me()).user.id);
+
+      // Three days before next week's visit, it gets posted, to Maria first.
+      const visits = async () => (await margaret.requests.list()).filter((r) => r.scheduleId === schedule.id && r.id !== request.id);
+      await server.services.schedules.postUpcomingVisits(noonOn(addDays(schedule.nextDate, -4)));
+      expect(await visits()).toHaveLength(0); // too early
+      await server.services.schedules.postUpcomingVisits(noonOn(addDays(schedule.nextDate, -3)));
+      const [visit] = await visits();
+      expect(visit).toMatchObject({ requestedDate: schedule.nextDate, requestedStartTime: "13:00", preferredWorkerId: schedule.preferredWorkerId });
+      expect((await maria.jobs.available()).some((o) => o.requestId === visit!.id)).toBe(true);
+      expect((await david.jobs.available()).some((o) => o.requestId === visit!.id)).toBe(false);
+      expect((await margaret.notifications.list()).some((n) => n.title.startsWith("We're finding someone for your weekly errands on"))).toBe(true);
+
+      // Running again doesn't double post, and the schedule moved on a week.
+      await server.services.schedules.postUpcomingVisits(noonOn(addDays(schedule.nextDate, -3)));
+      expect(await visits()).toHaveLength(1);
+      expect((await margaret.customers.schedules()).find((s) => s.id === schedule.id)!.nextDate).toBe(addDays(schedule.nextDate, 7));
+    });
+
+    it("skips visits missed while the server was down, and stops when asked", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "ERRANDS",
+        description: "Pharmacy pickup",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 2),
+        requestedStartTime: "11:00",
+        repeat: "BIWEEKLY",
+      });
+      const visits = async () => (await margaret.requests.list()).filter((r) => r.scheduleId === request.scheduleId && r.id !== request.id);
+
+      // Two months later: it doesn't post the missed ones, just the next one coming up (if it's close).
+      const later = addDays(todayIn("America/New_York"), 60);
+      await server.services.schedules.postUpcomingVisits(noonOn(later));
+      expect((await visits()).every((v) => v.requestedDate >= later)).toBe(true);
+      expect((await visits()).length).toBeLessThanOrEqual(1);
+
+      const stopped = await margaret.customers.stopSchedule(request.scheduleId!);
+      expect(stopped.active).toBe(false);
+      const before = (await visits()).length;
+      await server.services.schedules.postUpcomingVisits(noonOn(addDays(later, 30)));
+      expect(await visits()).toHaveLength(before);
+
+      const stranger = client();
+      await stranger.auth.signup({ role: "CUSTOMER", firstName: "Sam", lastName: "Lee", email: "sam@example.com", password: "longenough1" });
+      await expect(stranger.customers.stopSchedule(request.scheduleId!)).rejects.toMatchObject({ status: 403 });
+    });
+  });
+
   it("resets the demo data without logging anyone out", async () => {
     const admin = client();
     const margaret = client();

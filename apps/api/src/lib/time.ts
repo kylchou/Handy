@@ -68,3 +68,8 @@ export function zonedDateTimeToDate(date: string, time: string, timezone: string
   const first = guess - tzOffsetMs(new Date(guess), timezone);
   return new Date(guess - tzOffsetMs(new Date(first), timezone));
 }
+
+/** Days between visits for a repeating request. */
+export function repeatDays(frequency: "WEEKLY" | "BIWEEKLY"): number {
+  return frequency === "WEEKLY" ? 7 : 14;
+}

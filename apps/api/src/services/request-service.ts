@@ -10,7 +10,9 @@ import type { CustomerProfileRow, ServiceRequestRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
 import { sameAddress } from "../lib/geo";
 import { EMERGENCY_GUIDANCE, detectEmergency } from "../lib/safety";
-import { addMinutes, friendlyDate, nowTimeIn, todayIn } from "../lib/time";
+import { estimatePriceCents } from "../lib/pricing";
+import { addDays, addMinutes, dayOfWeek, friendlyDate, nowTimeIn, repeatDays, todayIn } from "../lib/time";
+import { schedulesRepo } from "../repositories/schedules";
 import { categoriesRepo } from "../repositories/categories";
 import { conversationsRepo } from "../repositories/conversations";
 import { jobsRepo } from "../repositories/jobs";
@@ -23,7 +25,6 @@ import { mergeDraft } from "./conversation-service";
 import type { MatchingOrchestrator } from "./matching-orchestrator";
 import { requestView, requestViews } from "./views";
 
-const HIGH_URGENCY_SURCHARGE_CENTS = 1000;
 
 export class RequestService {
   private notifier: Notifier;
@@ -80,6 +81,25 @@ export class RequestService {
 
     const coords = await this.jobSiteCoordinates(draft.location!, profile);
     const request = await db.transaction(async (tx) => {
+      // A repeating request gets a schedule, and this first visit is linked to it.
+      const schedule = draft.repeat
+        ? await schedulesRepo.create(tx, {
+            customerId: actor.id,
+            frequency: draft.repeat,
+            serviceCategoryId: category.id,
+            description: draft.description!,
+            location: draft.location!,
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            dayOfWeek: dayOfWeek(draft.requestedDate!),
+            startTime: draft.requestedStartTime!,
+            endTime: draft.requestedEndTime!,
+            urgency: draft.urgency ?? "NORMAL",
+            specialRequirements: draft.specialRequirements ?? [],
+            preferredWorkerId: draft.preferredWorkerId ?? null,
+            nextDate: addDays(draft.requestedDate!, repeatDays(draft.repeat)),
+          })
+        : null;
       const created = await requestsRepo.create(tx, {
         customerId: actor.id,
         conversationId: conv.id,
@@ -94,8 +114,9 @@ export class RequestService {
         urgency: draft.urgency ?? "NORMAL",
         specialRequirements: draft.specialRequirements ?? [],
         preferredWorkerId: draft.preferredWorkerId ?? null,
+        scheduleId: schedule?.id ?? null,
         status: "SEARCHING",
-        estimatedPriceCents: category.basePriceCents + (draft.urgency === "HIGH" ? HIGH_URGENCY_SURCHARGE_CENTS : 0),
+        estimatedPriceCents: estimatePriceCents(category.basePriceCents, draft.urgency),
         platformFeeCents: config.platformFeeCents,
       });
       await conversationsRepo.update(tx, conv.id, { status: "SUBMITTED", draft, readyToSubmit: true, missingInformation: [] });
