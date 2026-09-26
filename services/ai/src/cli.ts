@@ -6,9 +6,9 @@
 import { stdin as input, stdout as output } from "node:process";
 import { createInterface } from "node:readline";
 import type { AIConversationContext, ServiceRequestDraft } from "@handy/contracts";
-import { createAIService, selectProvider } from "./index.js";
+import { createAIService, DEFAULT_MUSE_MODEL } from "./index.js";
 
-// Same root .env the backend reads (MODEL_API_KEY / ANTHROPIC_API_KEY). Shell env wins.
+// Same root .env the backend reads (MODEL_API_KEY). Shell env wins.
 try {
   process.loadEnvFile(new URL("../../../.env", import.meta.url));
 } catch {
@@ -16,7 +16,7 @@ try {
 }
 
 const ai = createAIService();
-console.log(`Using ${selectProvider()} (${process.env.AI_MODEL || "default model"})`);
+console.log(`Using ${process.env.AI_MODEL || DEFAULT_MUSE_MODEL}`);
 const timezone = "America/New_York";
 const history: AIConversationContext["history"] = [];
 let draft: ServiceRequestDraft = {};

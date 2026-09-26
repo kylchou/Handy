@@ -55,7 +55,7 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     rateLimitEnabled: (env.RATE_LIMIT_ENABLED ?? "true") === "true",
     allowDemoReset: (env.ALLOW_DEMO_RESET ?? (env.NODE_ENV === "production" ? "false" : "true")) === "true",
     aiServiceModule: env.AI_SERVICE_MODULE ?? "@handy/ai",
-    aiTimeoutSeconds: Number(env.AI_TIMEOUT_SECONDS ?? 30),
+    aiTimeoutSeconds: Number(env.AI_TIMEOUT_SECONDS ?? 45),
     matchingServiceModule: env.MATCHING_SERVICE_MODULE ?? "@handy/matching",
     ...overrides,
   };

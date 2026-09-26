@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { JsonDraftModel } from "./draft.js";
 import { AIServiceError } from "./errors.js";
 import { JsonExtractionModel, parseJson, type JsonClient, type JsonResult, type ModelInput } from "./model.js";
 
@@ -76,12 +75,6 @@ export class MuseJsonClient implements JsonClient {
 }
 
 export class MuseExtractionModel extends JsonExtractionModel {
-  constructor(options: MuseModelOptions = {}) {
-    super(new MuseJsonClient(options));
-  }
-}
-
-export class MuseDraftModel extends JsonDraftModel {
   constructor(options: MuseModelOptions = {}) {
     super(new MuseJsonClient(options));
   }
