@@ -13,6 +13,10 @@ export { ClaudeExtractionModel, ClaudeJsonClient, DEFAULT_EFFORT, DEFAULT_MODEL 
 export type { ClaudeModelOptions, Effort, ExtractionModel, ModelInput, ModelRunResult } from "./model.js";
 export { classifySafety, EMERGENCY_MESSAGES, UNSUPPORTED_MESSAGES } from "./safety.js";
 export type { SafetyCheck, UnsupportedKind } from "./safety.js";
+export { screenJobMessage } from "./scam.js";
+export type { ChatSender, ScamFlag, ScreenResult } from "./scam.js";
+export { areaOf, formatWhen, toWorkerJobCard } from "./workerCard.js";
+export type { WorkerCardInput, WorkerJobCard } from "./workerCard.js";
 export type { ModelTurn } from "./schema.js";
 export { InMemoryConversationStore } from "./store.js";
 export type { ConversationStore } from "./store.js";

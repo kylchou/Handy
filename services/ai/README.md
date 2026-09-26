@@ -1,6 +1,6 @@
 # @handy/ai
 
-Front desk of Handy. Plain-language conversation in, structured service request out. No categories to pick, no forms. Also helps customers write messages to their worker.
+Front desk of Handy. Plain-language conversation in, structured service request out. No categories to pick, no forms. Also helps customers write messages to their worker, screens job chat for scams, and builds privacy-safe job cards for workers.
 
 ```
 Customer → Backend API → processMessage → safety check → Claude → validation → AIResponse
@@ -60,6 +60,60 @@ const res = await drafter.draft(
 
 Stateless: backend holds the `history` turns. Only facts from the instruction, job, and recent messages are used.
 
+## Chat screening
+
+Checks every job chat message before the backend saves it. No model call.
+
+```ts
+import { screenJobMessage } from "@handy/ai";
+
+// POST /api/v1/jobs/:jobId/messages
+const check = screenJobMessage(body.content, user.role === "WORKER" ? "worker" : "customer");
+```
+
+| `check.action` | backend does |
+|---|---|
+| `allow` | Save + deliver. |
+| `warn` | Save + deliver. Show `check.notice` to `check.noticeFor` (`"sender"` or `"customer"`). |
+| `block` | Don't save or deliver. Show `check.notice` to the sender. |
+
+`check.flagForAdmin` → worth showing on the admin dashboard.
+
+| sender | message | result |
+|---|---|---|
+| worker | gift card codes, Venmo/Zelle/cash, bank or card details, passwords/verification codes | block + admin |
+| worker | phone number, email, "text me" | warn customer + admin |
+| customer | real card number, SSN, password | block (protects them) |
+| customer | paying outside the app, gift card codes | tip + admin |
+| customer | phone number, email | tip |
+
+Normal job talk passes: Wi-Fi passwords, gate/door codes, "pick up a gift card for my grandson", "store only takes credit card".
+
+## Worker job card
+
+What a worker sees about a job, with private info hidden. No model call.
+
+```ts
+import { toWorkerJobCard } from "@handy/ai";
+
+const card = toWorkerJobCard(
+  { ...serviceRequest, customerFirstName, distanceMiles: match.distance, estimatedPay: price.servicePrice },
+  { accepted: job?.workerId === worker.id },
+);
+// { title: "Moving help", summary, when: "Sat, Sep 26 · 3–4 PM", location: "Atlanta, GA 30303",
+//   distance: "2.4 miles away", pay: "$35", notes: [...] }
+```
+
+| | before accept | after accept |
+|---|---|---|
+| location | city/area only ("Atlanta, GA 30303") | full address |
+| customer first name | hidden | shown |
+| health details (dementia, medications, …) | hidden, replaced by "A few personal details are shared after you accept" | shown |
+| job needs (ladder, wheelchair, lifting) | shown | shown |
+| phone, email, card numbers, gate/door codes | hidden | hidden (share codes in chat) |
+
+Build the card on the backend; never send the raw request to the worker app.
+
 ## Safety
 
 Users may be vulnerable, so safety runs first. Fixed patterns in `src/safety.ts` check every message before the model:
@@ -67,6 +121,8 @@ Users may be vulnerable, so safety runs first. Fixed patterns in `src/safety.ts`
 - Unsupported (medicine, bank passwords) → polite no
 
 Neither becomes a job. Model also judges safety; stricter result wins. Model flags emergency without mentioning 911 → canned message swapped in. Message help runs the same check.
+
+Job chat → scam screening (`src/scam.ts`). Worker app → privacy-safe card (`src/workerCard.ts`). Shared privacy patterns in `src/patterns.ts`.
 
 ## Setup
 
@@ -91,3 +147,6 @@ pnpm --filter @handy/ai build
 - `ServiceCategory` seeded with codes from `src/categories.ts`; map code → id if ids differ
 - Types in `src/types.ts` can move to `@handy/contracts` once it exists
 - Route for message help, e.g. `POST /api/v1/jobs/:jobId/messages/draft`, calling `drafter.draft(...)`
+- Call `screenJobMessage` in `POST /api/v1/jobs/:jobId/messages` before saving; return `notice` so Engineers 1 + 4 can show it
+- Somewhere to keep `flagForAdmin` messages (e.g. a `flagged` field on `JobMessage`) for the admin dashboard
+- Worker job endpoints return `toWorkerJobCard(...)` output, not the raw `ServiceRequest`
