@@ -1,3 +1,4 @@
+import type { Urgency } from "@handy/contracts";
 import { MatchingInputError } from "./matchingService.js";
 import { toMinutes } from "./time.js";
 
@@ -20,7 +21,7 @@ export const CATEGORY_RATES: Record<string, CategoryRate> = {
   MOVING_ASSISTANCE: { firstHour: 35, perHourAfter: 30 },
 };
 
-/** Unknown category (e.g. DB id instead of code) → this rate. */
+/** Unknown category → this rate. */
 export const DEFAULT_RATE: CategoryRate = { firstHour: 30, perHourAfter: 25 };
 
 /** Flat per-job fee, paid by customer, not taken from worker pay. */
@@ -35,7 +36,7 @@ export interface PriceInput {
   requestedStartTime: string;
   /** HH:MM, 24-hour */
   requestedEndTime: string;
-  urgency?: "low" | "normal" | "high";
+  urgency?: Urgency;
 }
 
 export interface PriceEstimate {
@@ -59,7 +60,7 @@ export function estimatePrice(input: PriceInput, rates: Record<string, CategoryR
   const rate = rates[input.serviceCategoryId] ?? DEFAULT_RATE;
   const billedHours = Math.max(1, Math.ceil(minutes / 30) / 2);
   let servicePrice = rate.firstHour + rate.perHourAfter * (billedHours - 1);
-  if (input.urgency === "high") servicePrice *= URGENT_MULTIPLIER;
+  if (input.urgency === "HIGH") servicePrice *= URGENT_MULTIPLIER;
   servicePrice = Math.round(servicePrice);
 
   return {

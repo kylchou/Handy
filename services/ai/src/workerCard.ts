@@ -1,4 +1,5 @@
-import { CATEGORY_INFO, SERVICE_CATEGORIES, type ServiceCategoryCode } from "./categories.js";
+import type { ServiceCategoryCode } from "@handy/contracts";
+import { CATEGORY_INFO, SERVICE_CATEGORIES } from "./categories.js";
 import { has, scrubPrivate } from "./patterns.js";
 
 /**

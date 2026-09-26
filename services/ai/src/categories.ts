@@ -1,17 +1,7 @@
-/** Service category codes, matching spec's ServiceCategory seeds. Table + code → id mapping owned by Engineer 2. */
-export const SERVICE_CATEGORIES = [
-  "HOME_MAINTENANCE",
-  "CLEANING",
-  "LAWN_CARE",
-  "ERRANDS",
-  "TRANSPORTATION",
-  "PET_ASSISTANCE",
-  "TECH_SUPPORT",
-  "COMPANIONSHIP",
-  "MOVING_ASSISTANCE",
-] as const;
+import { SERVICE_CATEGORY_CODES, type ServiceCategoryCode } from "@handy/contracts";
 
-export type ServiceCategoryCode = (typeof SERVICE_CATEGORIES)[number];
+/** Category codes come from @handy/contracts. These are the plain labels + what each covers, for the prompt and worker cards. */
+export const SERVICE_CATEGORIES = SERVICE_CATEGORY_CODES;
 
 export const CATEGORY_INFO: Record<ServiceCategoryCode, { label: string; covers: string }> = {
   HOME_MAINTENANCE: {

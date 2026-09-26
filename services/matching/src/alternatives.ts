@@ -1,6 +1,7 @@
 import { rankWorkers } from "./matchingService.js";
 import { addDays, fromMinutes, toMinutes } from "./time.js";
-import type { FindMatchesOptions, MatchableRequest, WorkerCandidate } from "./types.js";
+import type { WorkerCandidate } from "@handy/contracts";
+import type { FindMatchesOptions, MatchableRequest } from "./types.js";
 
 export interface AlternativeTime {
   /** YYYY-MM-DD */
@@ -33,7 +34,7 @@ export interface AlternativeTimeOptions extends Pick<FindMatchesOptions, "radius
 /**
  * No one available at the requested time → nearest times someone is.
  * Closest first: same day beats later days, then nearest time of day, then earlier.
- * Pairs with the broadcast tier's suggestAlternativeTime flag.
+ * Use when a request EXPIRES (backend sends REQUEST_EXPIRED) or findMatches returns nothing.
  */
 export function suggestAlternativeTimes(
   request: MatchableRequest,
@@ -49,7 +50,6 @@ export function suggestAlternativeTimes(
   const originalStart = toMinutes(request.requestedStartTime);
   const duration = toMinutes(request.requestedEndTime) - originalStart;
   const matchOptions: FindMatchesOptions = {
-    limit: Number.MAX_SAFE_INTEGER,
     radiusMultiplier: options.radiusMultiplier,
     requireVerified: options.requireVerified,
     excludeWorkerIds: options.excludeWorkerIds ? [...options.excludeWorkerIds] : undefined,

@@ -1,3 +1,4 @@
+import type { MatchingService, QualificationLevel, ServiceRequestDTO, WorkerCandidate } from "@handy/contracts";
 import { haversineMiles } from "./geo.js";
 import {
   distanceScore,
@@ -7,21 +8,14 @@ import {
   round1,
   totalScore,
 } from "./scoring.js";
-import type {
-  FindMatchesOptions,
-  MatchableRequest,
-  MatchingService,
-  ScoreBreakdown,
-  WorkerCandidate,
-  WorkerMatch,
-  WorkerSource,
-} from "./types.js";
+import type { FindMatchesOptions, MatchableRequest, RankedWorkerMatch, ScoreBreakdown } from "./types.js";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
-const DEFAULT_LIMIT = 10;
-/** Boost for previously used worker. */
-const PREFERRED_WORKER_BONUS = 5;
+/** Customer rated them 4–5 stars before. */
+const LIKED_BEFORE_BONUS = 5;
+/** Helped this customer before, any rating (1–2 star workers are already removed by backend). */
+const HELPED_BEFORE_BONUS = 2;
 
 export class MatchingInputError extends Error {
   constructor(message: string) {
@@ -30,31 +24,29 @@ export class MatchingInputError extends Error {
   }
 }
 
-/** Loads + ranks candidates from backend. Read-only; backend handles notifying + job creation. */
+/**
+ * Implements MatchingService from @handy/contracts. Backend passes candidates in,
+ * gets all eligible workers back best first. Read-only; backend handles offers + jobs.
+ */
 export class DeterministicMatchingService implements MatchingService {
-  constructor(private readonly workers: WorkerSource) {}
-
-  async findMatches(request: MatchableRequest, options: FindMatchesOptions = {}): Promise<WorkerMatch[]> {
-    validateRequest(request);
-    const candidates = await this.workers.findCandidates(request.serviceCategoryId);
-    return rankWorkers(request, candidates, options);
+  async findMatches(request: ServiceRequestDTO, candidates: WorkerCandidate[]): Promise<RankedWorkerMatch[]> {
+    return rankWorkers(request, candidates);
   }
 }
 
-/** Spec flow: qualification → availability → radius → score → sort. Pure, no WorkerSource needed. */
+/** Spec flow: qualification → availability → radius → score → sort. Pure. */
 export function rankWorkers(
   request: MatchableRequest,
   candidates: WorkerCandidate[],
   options: FindMatchesOptions = {},
-): WorkerMatch[] {
+): RankedWorkerMatch[] {
   validateRequest(request);
-  const limit = options.limit ?? DEFAULT_LIMIT;
+  const limit = options.limit ?? Number.POSITIVE_INFINITY;
   const radiusMultiplier = options.radiusMultiplier ?? 1;
   const requireVerified = options.requireVerified ?? true;
   const excluded = new Set(options.excludeWorkerIds ?? []);
-  const preferred = new Set(options.preferredWorkerIds ?? []);
 
-  const matches: WorkerMatch[] = [];
+  const matches: RankedWorkerMatch[] = [];
 
   for (const worker of candidates) {
     if (excluded.has(worker.workerId)) continue;
@@ -67,71 +59,84 @@ export function rankWorkers(
     const availability = checkAvailability(worker, request);
     if (!availability.available) continue;
 
-    const distance = haversineMiles(request.latitude, request.longitude, worker.latitude, worker.longitude);
-    const radius = worker.serviceRadiusMiles * radiusMultiplier;
-    if (distance > radius) continue;
+    // Missing coordinates on either side → distance unknown, radius not enforced.
+    const distance = milesBetween(request, worker);
+    const radius = worker.serviceRadius * radiusMultiplier;
+    if (distance != null && distance > radius) continue;
 
-    const similarJobs = worker.completedJobsByCategory?.[request.serviceCategoryId] ?? worker.completedJobs;
     const breakdown: ScoreBreakdown = {
       qualification: qualificationScore(qualification.qualificationLevel),
       availability: availability.score,
       distance: distanceScore(distance, radius),
-      rating: ratingScore(worker.rating, worker.completedJobs),
-      experience: experienceScore(similarJobs),
+      rating: ratingScore(worker.rating, worker.ratingCount),
+      experience: experienceScore(worker.completedJobsInCategory),
     };
 
-    let score = totalScore(breakdown);
-    if (preferred.has(worker.workerId)) score = Math.min(100, score + PREFERRED_WORKER_BONUS);
+    const bonus = familiarityBonus(worker);
+    const score = Math.min(100, round1(totalScore(breakdown) + bonus));
 
     matches.push({
       workerId: worker.workerId,
       score,
-      distance: round1(distance),
+      distance: distance == null ? null : round1(distance),
       qualificationMatch: true,
-      availabilityMatch: true,
+      availabilityMatch: !availability.partial,
       rating: worker.rating,
       breakdown: roundBreakdown(breakdown),
-      reasons: buildReasons(distance, worker, similarJobs, qualification.qualificationLevel, preferred.has(worker.workerId)),
+      reasons: buildReasons(distance, worker, qualification.qualificationLevel, availability.partial, bonus > 0),
     });
   }
 
-  matches.sort((a, b) => b.score - a.score || a.distance - b.distance || a.workerId.localeCompare(b.workerId));
+  matches.sort(
+    (a, b) => b.score - a.score || (a.distance ?? Infinity) - (b.distance ?? Infinity) || a.workerId.localeCompare(b.workerId),
+  );
   return matches.slice(0, limit);
 }
 
 interface AvailabilityResult {
   available: boolean;
   score: number;
+  /** Schedule only covers part of the window. */
+  partial: boolean;
 }
 
 export function checkAvailability(worker: WorkerCandidate, request: MatchableRequest): AvailabilityResult {
-  if (worker.availabilityStatus === "OFFLINE") return { available: false, score: 0 };
+  const unavailable = { available: false, score: 0, partial: false };
+  if (worker.availabilityStatus === "OFFLINE") return unavailable;
 
   const { requestedDate: date, requestedStartTime: start, requestedEndTime: end } = request;
 
-  const conflict = worker.bookedSlots?.some((slot) => slot.date === date && slot.start < end && start < slot.end);
-  if (conflict) return { available: false, score: 0 };
+  const conflict = worker.bookedWindows.some((b) => b.date === date && b.startTime < end && start < b.endTime);
+  if (conflict) return unavailable;
 
   let score: number;
-  if (worker.weeklyAvailability && worker.weeklyAvailability.length > 0) {
+  let partial = false;
+  if (worker.weeklyAvailability.length > 0) {
     const day = new Date(`${date}T00:00:00Z`).getUTCDay();
-    const covered = worker.weeklyAvailability.some(
-      (w) => w.dayOfWeek === day && w.start <= start && w.end >= end,
-    );
-    if (!covered) return { available: false, score: 0 };
-    score = 100; // Schedule confirms window.
+    const overlapping = worker.weeklyAvailability.filter((w) => w.dayOfWeek === day && w.startTime < end && start < w.endTime);
+    if (overlapping.length === 0) return unavailable; // Doesn't work then at all.
+    partial = !overlapping.some((w) => w.startTime <= start && w.endTime >= end);
+    score = partial ? 70 : 100; // Partial overlap: could still work, ranked lower.
   } else {
     score = 80; // No schedule: likely free, unconfirmed.
   }
 
   if (worker.availabilityStatus === "BUSY") score -= 20; // On another job now.
-  return { available: true, score };
+  return { available: true, score, partial };
+}
+
+function milesBetween(request: MatchableRequest, worker: WorkerCandidate): number | null {
+  if (request.latitude == null || request.longitude == null || worker.latitude == null || worker.longitude == null) return null;
+  return haversineMiles(request.latitude, request.longitude, worker.latitude, worker.longitude);
+}
+
+function familiarityBonus(worker: WorkerCandidate): number {
+  const past = worker.withCustomer;
+  if (!past || past.completedJobs === 0) return 0;
+  return (past.lastRating ?? 0) >= 4 ? LIKED_BEFORE_BONUS : HELPED_BEFORE_BONUS;
 }
 
 function validateRequest(request: MatchableRequest): void {
-  if (!Number.isFinite(request.latitude) || !Number.isFinite(request.longitude)) {
-    throw new MatchingInputError("Request needs latitude and longitude before matching");
-  }
   if (!DATE_RE.test(request.requestedDate)) {
     throw new MatchingInputError(`Invalid requestedDate: ${request.requestedDate}`);
   }
@@ -154,16 +159,19 @@ function roundBreakdown(b: ScoreBreakdown): ScoreBreakdown {
 }
 
 function buildReasons(
-  distance: number,
+  distance: number | null,
   worker: WorkerCandidate,
-  similarJobs: number,
-  level: WorkerCandidate["qualifications"][number]["qualificationLevel"],
-  preferred: boolean,
+  level: QualificationLevel,
+  partial: boolean,
+  helpedBefore: boolean,
 ): string[] {
-  const reasons = [`${round1(distance)} miles away`, "Available at the requested time"];
-  reasons.push(level === "EXPERT" ? "Highly experienced with this kind of job" : "Qualified for this kind of job");
-  if (worker.completedJobs > 0 && worker.rating > 0) reasons.push(`${worker.rating.toFixed(1)}-star rating`);
-  if (similarJobs > 0) reasons.push(`${similarJobs} similar job${similarJobs === 1 ? "" : "s"} completed`);
-  if (preferred) reasons.push("You've worked with them before");
+  const reasons: string[] = [];
+  if (distance != null) reasons.push(`${round1(distance)} miles away`);
+  reasons.push(partial ? "Partly available at the requested time" : "Available at the requested time");
+  reasons.push(level === "BASIC" ? "Qualified for this kind of job" : "Experienced with this kind of job");
+  if (worker.ratingCount > 0) reasons.push(`${worker.rating.toFixed(1)}-star rating`);
+  const similar = worker.completedJobsInCategory;
+  if (similar > 0) reasons.push(`${similar} similar job${similar === 1 ? "" : "s"} completed`);
+  if (helpedBefore) reasons.push("Has helped this customer before");
   return reasons;
 }

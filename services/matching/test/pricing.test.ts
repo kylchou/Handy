@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { MatchingInputError } from "../src/matchingService.js";
 import { estimatePrice } from "../src/pricing.js";
 
-const job = (category: string, start: string, end: string, urgency?: "low" | "normal" | "high") => ({
+const job = (category: string, start: string, end: string, urgency?: "LOW" | "NORMAL" | "HIGH") => ({
   serviceCategoryId: category,
   requestedStartTime: start,
   requestedEndTime: end,
@@ -30,7 +30,7 @@ describe("estimatePrice", () => {
   });
 
   it("adds 20% for urgent jobs", () => {
-    expect(estimatePrice(job("MOVING_ASSISTANCE", "15:00", "16:00", "high")).servicePrice).toBe(42);
+    expect(estimatePrice(job("MOVING_ASSISTANCE", "15:00", "16:00", "HIGH")).servicePrice).toBe(42);
   });
 
   it("uses the default rate for unknown categories", () => {

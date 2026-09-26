@@ -1,4 +1,4 @@
-import type { WorkerMatch } from "./types.js";
+import type { WorkerMatch } from "@handy/contracts";
 
 /**
  * Top few workers notified first, more if no one accepts, then wider radius.

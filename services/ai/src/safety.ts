@@ -1,4 +1,5 @@
-import type { EmergencyGuidance, EmergencyKind, SafetyStatus } from "./types.js";
+import type { SafetyStatus } from "@handy/contracts";
+import type { EmergencyGuidance, EmergencyKind } from "./types.js";
 
 /**
  * Deterministic safety layer, runs before the model. Emergency detection never

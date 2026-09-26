@@ -1,29 +1,24 @@
-import { AIServiceError } from "./errors.js";
-import { ClaudeExtractionModel, type ExtractionModel } from "./model.js";
-import { buildContextBlock, localNow, SYSTEM_PROMPT } from "./prompt.js";
+import {
+  REQUIRED_REQUEST_FIELDS,
+  type AIConversationContext,
+  type AIResponse,
+  type AIService,
+  type SafetyStatus,
+  type ServiceRequestDraft,
+} from "@handy/contracts";
+import { ClaudeExtractionModel, type ExtractionModel, type ModelRunResult } from "./model.js";
+import { buildContextBlock, clockIn, SYSTEM_PROMPT } from "./prompt.js";
 import { EMERGENCY_MESSAGES, classifySafety } from "./safety.js";
 import type { ModelTurn } from "./schema.js";
-import { InMemoryConversationStore, type ConversationStore } from "./store.js";
-import type {
-  AIResponse,
-  AIService,
-  ConversationState,
-  CustomerContext,
-  EmergencyGuidance,
-  ExtractedRequestData,
-  RequiredField,
-  SafetyStatus,
-} from "./types.js";
+import type { ChatTurn } from "./types.js";
 
 export interface HandyAIServiceOptions {
   model?: ExtractionModel;
-  store?: ConversationStore;
-  /** For resolving "tomorrow", "Friday", etc. */
-  timeZone?: string;
-  now?: () => Date;
   /** Past turns sent to model; older dropped. */
   maxHistoryTurns?: number;
 }
+
+type RequiredField = (typeof REQUIRED_REQUEST_FIELDS)[number];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -32,188 +27,175 @@ const DEFAULT_DURATION_MINUTES = 60;
 const REFUSAL_MESSAGE =
   "I'm sorry, that's not something our helpers can do. Is there something else I can help you with, like an errand, a ride, or help around the house?";
 
+const SAY_AGAIN_MESSAGE = "I'm sorry, I didn't quite catch that. Could you say it again, maybe in a different way?";
+
 const QUESTION_FOR: Record<RequiredField, string> = {
-  serviceCategory: "What can we help you with?",
+  serviceCategoryId: "What can we help you with?",
   description: "Could you tell me a little more about what you need done?",
-  date: "What day would you like help?",
-  startTime: "What time would work best for you?",
+  requestedDate: "What day would you like help?",
+  requestedStartTime: "What time would work best for you?",
   location: "What address should the helper come to?",
 };
 
+/**
+ * Implements AIService from @handy/contracts. Stateless: backend passes history +
+ * current draft each turn and saves the result.
+ */
 export class HandyAIService implements AIService {
   private readonly model: ExtractionModel;
-  private readonly store: ConversationStore;
-  private readonly timeZone: string;
-  private readonly now: () => Date;
   private readonly maxHistoryTurns: number;
 
   constructor(options: HandyAIServiceOptions = {}) {
     this.model = options.model ?? new ClaudeExtractionModel();
-    this.store = options.store ?? new InMemoryConversationStore();
-    this.timeZone = options.timeZone ?? "America/New_York";
-    this.now = options.now ?? (() => new Date());
     this.maxHistoryTurns = options.maxHistoryTurns ?? 40;
   }
 
-  async getState(conversationId: string): Promise<ConversationState | undefined> {
-    return this.store.get(conversationId);
-  }
-
-  async resetConversation(conversationId: string): Promise<void> {
-    await this.store.delete(conversationId);
-  }
-
-  async processMessage(conversationId: string, message: string, customer: CustomerContext = {}): Promise<AIResponse> {
+  async processMessage(_conversationId: string, message: string, ctx: AIConversationContext): Promise<AIResponse> {
     const text = message.trim();
-    const state = (await this.store.get(conversationId)) ?? newState(conversationId);
+    const current = ctx.currentDraft;
 
-    if (!text) {
-      return buildResponse(QUESTION_FOR.serviceCategory, state.extracted, "NEEDS_CLARIFICATION", false);
-    }
+    if (!text) return respond(QUESTION_FOR.serviceCategoryId, {}, current, "NEEDS_CLARIFICATION");
 
     // 1. Safety check. Emergencies + unsupported requests never reach the model.
     const safety = classifySafety(text);
     if (safety.status !== "NORMAL_SERVICE") {
-      return this.finish(state, text, safety.message ?? REFUSAL_MESSAGE, safety.status, state.extracted, false, safety.emergency);
+      return respond(safety.message ?? REFUSAL_MESSAGE, {}, current, safety.status);
     }
 
     // 2. Model turn: returns full updated request.
-    const today = localNow(this.now(), this.timeZone);
-    const history = state.history.slice(-this.maxHistoryTurns);
-    let result;
+    let result: ModelRunResult;
     try {
       result = await this.model.run({
         system: SYSTEM_PROMPT,
         messages: [
-          ...history,
+          ...toModelHistory(ctx.history.slice(-this.maxHistoryTurns)),
           {
             role: "user",
             content: [
               { type: "text", text },
-              { type: "text", text: buildContextBlock(today, this.timeZone, customer, state.extracted) },
+              { type: "text", text: buildContextBlock(ctx) },
             ],
           },
         ],
       });
-    } catch (cause) {
-      if (cause instanceof AIServiceError) throw cause;
-      throw new AIServiceError("The AI model could not be reached", { cause });
+    } catch {
+      // Model down, bad JSON, bad shape → never throw at the customer. Draft unchanged; they just say it again.
+      return respond(SAY_AGAIN_MESSAGE, {}, current, "NEEDS_CLARIFICATION");
     }
 
-    if (result.kind === "refused") {
-      return this.finish(state, text, REFUSAL_MESSAGE, "UNSUPPORTED_SERVICE", state.extracted, false);
-    }
+    if (result.kind === "refused") return respond(REFUSAL_MESSAGE, {}, current, "UNSUPPORTED_SERVICE");
 
     const turn = result.output;
-    const safetyStatus: SafetyStatus = turn.safetyStatus;
-
-    if (safetyStatus === "POTENTIAL_EMERGENCY") {
+    if (turn.safetyStatus === "POTENTIAL_EMERGENCY") {
       // Guarantee the reply includes a number to call.
       const reply = /\b(911|988)\b/.test(turn.reply) ? turn.reply : EMERGENCY_MESSAGES.GENERAL;
-      return this.finish(state, text, reply, safetyStatus, state.extracted, false, { kind: "GENERAL", callNumber: "911" });
+      return respond(reply, {}, current, "POTENTIAL_EMERGENCY");
     }
-    if (safetyStatus === "UNSUPPORTED_SERVICE") {
-      return this.finish(state, text, turn.reply.trim() || REFUSAL_MESSAGE, safetyStatus, state.extracted, false);
+    if (turn.safetyStatus === "UNSUPPORTED_SERVICE") {
+      return respond(turn.reply.trim() || REFUSAL_MESSAGE, {}, current, "UNSUPPORTED_SERVICE");
     }
 
-    // 3. Validate extraction, don't trust it.
-    const extracted = sanitizeExtraction(turn.request, today.date, today.time);
-    const missing = missingFields(extracted);
-    const readyToSubmit = missing.length === 0 && safetyStatus === "NORMAL_SERVICE";
-    const firstMissing = missing[0];
+    // 3. Validate extraction, don't trust it. Only send back what changed.
+    const changes = draftChanges(current, sanitizeExtraction(turn.request, ctx));
+    const after = { ...current, ...changes };
+    const firstMissing = missingFields(after)[0];
     const reply = turn.reply.trim() || (firstMissing ? QUESTION_FOR[firstMissing] : "Would you like me to find someone?");
 
-    return this.finish(state, text, reply, safetyStatus, extracted, readyToSubmit && turn.userConfirmed);
-  }
+    // Ready only after a summary + "yes": draft was already complete (so a summary was shown),
+    // model heard a yes, and nothing changed this turn ("Actually, make it Friday" → re-summarize).
+    const confirmed =
+      turn.customerConfirmed && missingFields(current).length === 0 && Object.keys(changes).length === 0;
 
-  private async finish(
-    state: ConversationState,
-    userText: string,
-    reply: string,
-    safetyStatus: SafetyStatus,
-    extracted: ExtractedRequestData,
-    userConfirmed: boolean,
-    emergency?: EmergencyGuidance,
-  ): Promise<AIResponse> {
-    state.history.push({ role: "user", content: userText }, { role: "assistant", content: reply });
-    state.history = state.history.slice(-this.maxHistoryTurns);
-    state.extracted = extracted;
-    state.safetyStatus = safetyStatus;
-    state.updatedAt = this.now().toISOString();
-    await this.store.save(state);
-
-    return buildResponse(reply, extracted, safetyStatus, userConfirmed, emergency);
+    return respond(reply, changes, after, turn.safetyStatus, confirmed);
   }
 }
 
-function newState(conversationId: string): ConversationState {
-  return {
-    conversationId,
-    history: [],
-    extracted: {},
-    safetyStatus: "NEEDS_CLARIFICATION",
-    updatedAt: new Date(0).toISOString(),
-  };
-}
-
-function buildResponse(
+function respond(
   message: string,
-  extracted: ExtractedRequestData,
+  extractedData: ServiceRequestDraft,
+  draftAfter: ServiceRequestDraft,
   safetyStatus: SafetyStatus,
-  userConfirmed: boolean,
-  emergency?: EmergencyGuidance,
+  confirmed = false,
 ): AIResponse {
-  const missingInformation = missingFields(extracted);
-  const readyToSubmit = missingInformation.length === 0 && safetyStatus === "NORMAL_SERVICE";
+  const missingInformation = missingFields(draftAfter);
   return {
     message,
-    extractedData: extracted,
+    extractedData,
     missingInformation,
-    readyToSubmit,
-    userConfirmed: readyToSubmit && userConfirmed,
+    readyToSubmit: confirmed && missingInformation.length === 0 && safetyStatus === "NORMAL_SERVICE",
     safetyStatus,
-    ...(emergency ? { emergency } : {}),
   };
 }
 
-export function missingFields(data: ExtractedRequestData): RequiredField[] {
-  const missing: RequiredField[] = [];
-  if (!data.serviceCategoryId) missing.push("serviceCategory");
-  if (!data.description) missing.push("description");
-  if (!data.requestedDate) missing.push("date");
-  if (!data.requestedStartTime) missing.push("startTime");
-  if (!data.location) missing.push("location");
-  return missing;
+/** Claude needs a user turn first; backend history starts with the AI greeting, so leading assistant turns are dropped. */
+function toModelHistory(history: AIConversationContext["history"]): ChatTurn[] {
+  const turns: ChatTurn[] = history.map((h) => ({ role: h.role === "customer" ? "user" : "assistant", content: h.content }));
+  const firstUser = turns.findIndex((t) => t.role === "user");
+  return firstUser === -1 ? [] : turns.slice(firstUser);
 }
 
-/** Drops bad formats + past dates/times. AI re-asks; backend never gets bad data. */
-export function sanitizeExtraction(
-  raw: ModelTurn["request"],
-  todayDate: string,
-  nowTime: string,
-): ExtractedRequestData {
-  const out: ExtractedRequestData = {};
+export function missingFields(draft: ServiceRequestDraft): RequiredField[] {
+  return REQUIRED_REQUEST_FIELDS.filter((f) => draft[f] == null || draft[f] === "");
+}
 
-  if (raw.serviceCategory) out.serviceCategoryId = raw.serviceCategory;
+/**
+ * Contract merge rules: undefined = leave alone, null = clear.
+ * `next` uses undefined for "keep" and null for "clear".
+ */
+export function draftChanges(current: ServiceRequestDraft, next: ServiceRequestDraft): ServiceRequestDraft {
+  const changes: ServiceRequestDraft = {};
+  for (const key of Object.keys(next) as Array<keyof ServiceRequestDraft>) {
+    const value = next[key];
+    if (value === undefined) continue;
+    if (JSON.stringify(current[key] ?? null) !== JSON.stringify(value)) {
+      (changes as Record<string, unknown>)[key] = value;
+    }
+  }
+  return changes;
+}
 
-  const description = cleanText(raw.description);
-  if (description) out.description = description;
+/**
+ * Model output → draft. Drops bad formats, past dates/times, unknown worker ids.
+ * Model left it null/empty → undefined (keep; a forgetful model never wipes data).
+ * Given but invalid → null (clear, AI re-asks).
+ */
+export function sanitizeExtraction(raw: ModelTurn["request"], ctx: AIConversationContext): ServiceRequestDraft {
+  const out: ServiceRequestDraft = {};
+  const nowTime = clockIn(ctx.now, ctx.timezone);
+  const set = <K extends keyof ServiceRequestDraft>(key: K, given: unknown, valid: ServiceRequestDraft[K] | undefined) => {
+    if (valid !== undefined) out[key] = valid;
+    else if (given != null) out[key] = null as ServiceRequestDraft[K];
+  };
 
-  const location = cleanText(raw.location);
-  if (location) out.location = location;
+  // Valid ids come from the backend's category list (all contract codes if it's empty).
+  const allowed = ctx.serviceCategories.map((c) => c.id);
+  const category = raw.serviceCategory && (allowed.length === 0 || allowed.includes(raw.serviceCategory)) ? raw.serviceCategory : undefined;
+  set("serviceCategoryId", raw.serviceCategory, category);
+  set("description", raw.description, cleanText(raw.description));
+  set("location", raw.location, cleanText(raw.location));
 
-  if (raw.date && isRealDate(raw.date) && raw.date >= todayDate) out.requestedDate = raw.date;
+  const date = raw.date && isRealDate(raw.date) && raw.date >= ctx.today ? raw.date : undefined;
+  set("requestedDate", raw.date, date);
 
-  const start = raw.startTime && TIME_RE.test(raw.startTime) ? raw.startTime : undefined;
-  const startIsPast = start !== undefined && out.requestedDate === todayDate && start < nowTime;
-  if (start && !startIsPast) {
-    out.requestedStartTime = start;
+  const effectiveDate = date ?? ctx.currentDraft.requestedDate ?? undefined;
+  const startValid = raw.startTime && TIME_RE.test(raw.startTime) ? raw.startTime : undefined;
+  const start = startValid && !(effectiveDate === ctx.today && startValid < nowTime) ? startValid : undefined;
+  set("requestedStartTime", raw.startTime, start);
+  if (start) {
     const end = raw.endTime && TIME_RE.test(raw.endTime) && raw.endTime > start ? raw.endTime : undefined;
     out.requestedEndTime = end ?? addMinutes(start, DEFAULT_DURATION_MINUTES);
+  } else if (raw.startTime != null) {
+    out.requestedEndTime = null;
   }
 
-  out.urgency = raw.urgency ?? "normal";
-  out.specialRequirements = raw.specialRequirements.map((r) => cleanText(r)).filter((r): r is string => !!r);
+  const urgency = raw.urgency ?? (ctx.currentDraft.urgency ? undefined : "NORMAL");
+  if (urgency) out.urgency = urgency;
+  const requirements = raw.specialRequirements.map((r) => cleanText(r)).filter((r): r is string => !!r);
+  if (requirements.length) out.specialRequirements = requirements;
+
+  const knownWorker = (ctx.pastWorkers ?? []).some((w) => w.workerId === raw.preferredWorkerId);
+  set("preferredWorkerId", raw.preferredWorkerId, knownWorker ? (raw.preferredWorkerId ?? undefined) : undefined);
+  if (raw.repeat) out.repeat = raw.repeat;
 
   return out;
 }
