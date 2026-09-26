@@ -21,7 +21,8 @@ The host tells the app which port to use with `PORT`, and the API picks that up 
 | `NODE_ENV` | `production` (the Dockerfile already sets it) | yes |
 | `JWT_SECRET` | any long random string. The server won't start without it in production | yes |
 | `CORS_ORIGINS` | the frontend URLs, comma separated, like `https://handy-customer.vercel.app,https://handy-worker.vercel.app`. `https://*.vercel.app` covers preview deploys too | yes |
-| `ANTHROPIC_API_KEY` | the key for Aditya's AI. Without it the chat can't use the real AI | for the real AI |
+| `MODEL_API_KEY` | the Meta Muse key for Aditya's AI. If it's set, Muse is used | this or the next one, for the real AI |
+| `ANTHROPIC_API_KEY` | a Claude key, used instead if `MODEL_API_KEY` is empty. With neither, the chat uses the built-in assistant | |
 | `ALLOW_DEMO_RESET` | `true`, so demo reset and the demo autopilot work. They're off in production otherwise | for the demo |
 | `DATABASE_URL` | the host's Postgres URL. See below if you skip this | recommended |
 | `DATABASE_SSL` | `true` if the database needs SSL and the URL doesn't already have `sslmode=require` | sometimes |
@@ -40,7 +41,7 @@ If you don't set `DATABASE_URL`, it uses the embedded database and saves to `/ap
 ## Checking it worked
 
 - `https://<your-api>/health` should say `{"ok":true,...}`. Use this as the health check path if the host asks for one.
-- Look for `Loaded @handy/ai` in the logs, then send a chat message. If the AI keeps asking you to say it again, or the logs mention the API key, check `ANTHROPIC_API_KEY`.
+- Look for `Loaded @handy/ai` in the logs, then send a chat message. If the logs say `No AI key set` or `using fallback`, check `MODEL_API_KEY` (or `ANTHROPIC_API_KEY`).
 - Log in as `margaret@handy.demo` / `password123` from a deployed frontend. If the browser console says something about CORS, the frontend's URL isn't in `CORS_ORIGINS`. It has to match exactly, including `https://` and no trailing path.
 
 ## Things to know
