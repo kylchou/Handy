@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url("https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap");
+/* Font is loaded in app/layout.tsx via next/font (sets --font-atkinson). */
 
 html {
   -webkit-text-size-adjust: 100%;
@@ -11,7 +11,7 @@ html {
 body {
   background-color: #fbf9f4;
   color: #1e2a30;
-  font-family: "Atkinson Hyperlegible", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-atkinson), "Atkinson Hyperlegible", ui-sans-serif, system-ui, sans-serif;
 }
 
 /* Every interactive element gets a clearly visible focus ring -

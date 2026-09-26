@@ -194,7 +194,7 @@ export default function JobPage() {
               onChange={(e) => setText(e.target.value)}
               placeholder="Type a message…"
               aria-label="Type a message"
-              className="min-w-0 flex-1 rounded-control border-2 border-line px-4 py-3 text-lg"
+              className="min-w-0 flex-1 rounded-control border-2 border-field px-4 py-3 text-lg"
             />
             <BigButton type="submit" fullWidth={false} className="px-5">
               Send

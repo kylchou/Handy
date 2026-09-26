@@ -2,10 +2,13 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Mic } from "lucide-react";
 import ChatBubble from "@/components/ChatBubble";
 import ConfirmationCard from "@/components/ConfirmationCard";
+import Header from "@/components/Header";
 import NavBar from "@/components/NavBar";
 import BigButton from "@/components/BigButton";
+import TypingIndicator from "@/components/TypingIndicator";
 import { api, friendlyError, useRequireLogin } from "@/lib/api";
 import { useVoiceInput } from "@/lib/useVoiceInput";
 import type { SafetyStatus, SenderType, ServiceRequestDraft } from "@/lib/types";
@@ -35,7 +38,7 @@ export default function ChatPage() {
   const [started, setStarted] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const { supported, listening, start } = useVoiceInput((transcript) => {
+  const { supported, listening, toggle: toggleMic, error: voiceError } = useVoiceInput((transcript) => {
     setInput(transcript);
   });
 
@@ -126,7 +129,9 @@ export default function ChatPage() {
   const isEmergency = safetyStatus === "POTENTIAL_EMERGENCY";
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col px-4 pb-32 pt-8">
+    <>
+    <Header />
+    <main className="mx-auto flex min-h-[calc(100vh-4.5rem)] max-w-2xl flex-col px-4 pb-32 pt-6">
       {!started ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-8 text-center">
           <h1 className="text-3xl font-bold text-ink">
@@ -142,7 +147,8 @@ export default function ChatPage() {
             onSubmit={handleSubmit}
             supported={supported}
             listening={listening}
-            onMic={start}
+            onMic={toggleMic}
+            voiceError={voiceError}
             large
           />
           <div className="w-full space-y-2 text-left text-ink-soft">
@@ -174,9 +180,7 @@ export default function ChatPage() {
                 content={m.content}
               />
             ))}
-            {sending && (
-              <ChatBubble senderType="AI" content="Thinking…" />
-            )}
+            {sending && <TypingIndicator />}
 
             {isEmergency && (
               <div
@@ -217,7 +221,8 @@ export default function ChatPage() {
                   onSubmit={handleSubmit}
                   supported={supported}
                   listening={listening}
-                  onMic={start}
+                  onMic={toggleMic}
+            voiceError={voiceError}
                 />
               </div>
             </div>
@@ -227,6 +232,7 @@ export default function ChatPage() {
 
       <NavBar />
     </main>
+    </>
   );
 }
 
@@ -237,6 +243,7 @@ function ChatComposer({
   supported,
   listening,
   onMic,
+  voiceError,
   large,
 }: {
   input: string;
@@ -245,37 +252,62 @@ function ChatComposer({
   supported: boolean;
   listening: boolean;
   onMic: () => void;
+  voiceError?: string | null;
   large?: boolean;
 }) {
   return (
-    <form onSubmit={onSubmit} className="flex w-full gap-2">
-      {supported && (
-        <button
-          type="button"
-          onClick={onMic}
-          aria-label={listening ? "Listening…" : "Tap to speak"}
-          className={`tap-target flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-2xl ${
-            listening
-              ? "bg-warm text-white"
-              : "bg-white text-accent border-2 border-accent"
+    <div className="w-full">
+      <form onSubmit={onSubmit} className="flex w-full gap-2">
+        {supported && (
+          <button
+            type="button"
+            onClick={onMic}
+            aria-label={listening ? "Stop listening" : "Tap to speak"}
+            aria-pressed={listening}
+            className={`tap-target flex h-14 w-14 shrink-0 items-center justify-center rounded-full ${
+              listening
+                ? "animate-pulse-ring bg-warm text-white"
+                : "border-2 border-accent bg-white text-accent"
+            }`}
+          >
+            <Mic aria-hidden="true" size={26} strokeWidth={2.25} />
+          </button>
+        )}
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Type what you need…"
+          aria-label="What can we help you with?"
+          className={`min-w-0 flex-1 rounded-control border-2 border-field bg-white px-4 text-lg text-ink ${
+            large ? "py-4" : "py-3"
           }`}
-        >
-          🎤
-        </button>
+        />
+        <BigButton type="submit" fullWidth={false} className="px-5">
+          Send
+        </BigButton>
+      </form>
+      {listening && (
+        // Visible, not just for screen readers: people need to see the mic is on.
+        <p role="status" className="mt-2 flex items-center gap-2 text-lg font-bold text-warm">
+          <span className="flex h-5 items-center gap-1" aria-hidden="true">
+            {[0, 120, 240, 360].map((delay) => (
+              <span
+                key={delay}
+                className="h-full w-1 origin-center animate-wave rounded-full bg-warm"
+                style={{ animationDelay: `${delay}ms` }}
+              />
+            ))}
+          </span>
+          Listening… tap the microphone again when you&apos;re done.
+        </p>
       )}
-      <input
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        placeholder="Type what you need…"
-        aria-label="What can we help you with?"
-        className={`min-w-0 flex-1 rounded-control border-2 border-line bg-white px-4 text-lg text-ink ${
-          large ? "py-4" : "py-3"
-        }`}
-      />
-      <BigButton type="submit" fullWidth={false} className="px-5">
-        Send
-      </BigButton>
-    </form>
+      {!listening && voiceError && (
+        // Why the mic stopped, in plain words (blocked, no mic, no internet, nothing heard).
+        <p role="alert" className="mt-2 text-lg text-danger">
+          {voiceError}
+        </p>
+      )}
+    </div>
   );
 }

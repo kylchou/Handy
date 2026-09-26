@@ -11,6 +11,8 @@ const config: Config = {
         ink: "#1E2A30",
         "ink-soft": "#3E4C52",
         line: "#DCD5C4",
+        // Text-entry borders. `line` is too faint on white (~1.4:1); this is ~3.8:1 (WCAG needs 3:1).
+        field: "#8C8170",
         surface: "#FFFFFF",
         accent: {
           DEFAULT: "#2F5D53",
@@ -28,6 +30,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: [
+          "var(--font-atkinson)",
           "Atkinson Hyperlegible",
           "ui-sans-serif",
           "system-ui",
