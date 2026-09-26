@@ -3,8 +3,10 @@
 Front desk of Handy. Plain-language conversation in, structured service request out. No categories to pick, no forms. Also helps customers write messages to their worker, screens job chat for scams, and builds privacy-safe job cards for workers.
 
 ```
-Customer → Backend API → processMessage → safety check → Claude → validation → AIResponse
+Customer → Backend API → processMessage → safety check → Muse or Claude → validation → AIResponse
 ```
+
+Two providers, same behavior: Meta's Muse Spark or Anthropic's Claude. Whichever key is set gets used.
 
 Implements `AIService` from `packages/contracts/src/ai.ts`. Stateless, no database access: backend passes history + current draft each turn and saves the result.
 
@@ -31,11 +33,11 @@ What gets extracted: category, description, location (home address if "at my hou
 Merge rules:
 - Model forgets a field → kept (never wiped by accident)
 - Model gives a bad value (past date, "3pm" instead of `15:00`, unknown worker) → cleared, AI asks again
-- Backend's greeting at the start of history is skipped (Claude needs a customer turn first)
+- Backend's greeting at the start of history is skipped (the model needs a customer turn first)
 
 - Category must be in `context.serviceCategories` (all contract codes if that list is empty)
 
-Model down, bad JSON, or bad shape → never throws. Returns "sorry, could you say it again", `NEEDS_CLARIFICATION`, draft unchanged.
+Model call fails (network, auth, out of credits) → throws. Bad JSON → one retry, then throws. Backend answers that one message with its built-in assistant, conversation keeps going. "Could you say that again" only comes from the model itself, when it worked but didn't understand.
 
 ## Safety
 
@@ -74,19 +76,29 @@ const res = await createJobMessageDrafter().draft(
 
 ## Setup
 
-| env (root `.env`) | default |
+Real keys go in the root `.env` only, never committed. Both are empty in `.env.example`.
+
+| env (root `.env`) | meaning |
 |---|---|
-| `ANTHROPIC_API_KEY` | **required for real AI** (or `ant auth login` profile). Empty in `.env.example`; real key in `.env` only. Without it, every chat turn gets "could you say it again". |
-| `AI_MODEL` | `claude-opus-5` |
-| `AI_EFFORT` | `medium` (`low` = faster) |
+| `MODEL_API_KEY` | Meta Model API key → Muse Spark. Used first when set. |
+| `ANTHROPIC_API_KEY` | Claude key (or `ANTHROPIC_AUTH_TOKEN`). Used when `MODEL_API_KEY` is empty. |
+| `AI_PROVIDER` | Optional. `muse` or `anthropic` forces one; its key must be set. |
+| `AI_MODEL` | Optional. Default `muse-spark-1.3` (Muse) or `claude-opus-5` (Claude). |
+| `AI_EFFORT` | Claude only. `medium` default, `low` = faster. |
 | `AI_SERVICE_MODULE` | `@handy/ai`. Set empty to use the backend's rule-based fallback (no key needed). |
 
-Claude declines → automatic retry on a fallback model (`fallbacks: "default"`).
+No key → `createAIService()` throws `No AI key set (MODEL_API_KEY or ANTHROPIC_API_KEY)`, backend starts with its built-in assistant.
+
+**Muse** (`src/muse.ts`): `openai` SDK (`~7.23.0`) pointed at `https://api.meta.ai/v1`. System prompt sent as the first message. Same JSON schema as Claude, `strict: true`; if Meta rejects the schema, switches to `strict: false` for good and zod still checks every reply. `refusal` → treated like a Claude refusal. Cut off (`finish_reason: "length"`) or bad JSON → one retry, then throws.
+
+**Claude** (`src/model.ts`): Anthropic SDK (`~0.128.0`). Claude declines → automatic retry on a fallback model (`fallbacks: "default"`).
+
+Both pinned so an SDK update can't break the demo.
 
 ```sh
 pnpm --filter @handy/ai test       # stub model, no key needed
 pnpm --filter @handy/ai typecheck
-pnpm --filter @handy/ai chat       # terminal chat, key needed
+pnpm --filter @handy/ai chat       # terminal chat, reads the root .env, needs a key
 ```
 
 ## Needed from Engineer 2

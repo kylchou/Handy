@@ -14,6 +14,17 @@ export interface ExtractionModel {
   run(input: ModelInput): Promise<ModelRunResult>;
 }
 
+export type JsonResult = { kind: "ok"; json: unknown } | { kind: "refused" };
+
+/**
+ * One provider call: prompt in, parsed JSON out. Claude and Muse both implement this.
+ * Rules for every client: refusal → { kind: "refused" }; cut off / invalid JSON → AIServiceError (retried once);
+ * network, auth, credits → throw as-is (backend fallback answers that message).
+ */
+export interface JsonClient {
+  request(input: ModelInput & { schema: Record<string, unknown>; schemaName: string }): Promise<JsonResult>;
+}
+
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ClaudeModelOptions {
@@ -25,15 +36,14 @@ export interface ClaudeModelOptions {
 export const DEFAULT_MODEL = "claude-opus-5";
 export const DEFAULT_EFFORT: Effort = "medium";
 
-/** Shared Claude call: structured JSON out, refusal-aware. Used by every Claude-backed model. */
-export class ClaudeJsonClient {
+export class ClaudeJsonClient implements JsonClient {
   private client?: Anthropic;
 
   constructor(private readonly options: ClaudeModelOptions = {}) {
     this.client = options.client;
   }
 
-  async request(input: ModelInput & { schema: Record<string, unknown> }): Promise<{ kind: "ok"; json: unknown } | { kind: "refused" }> {
+  async request(input: ModelInput & { schema: Record<string, unknown> }): Promise<JsonResult> {
     // Lazy client: importing the package never needs a key.
     const client = (this.client ??= new Anthropic());
 
@@ -61,23 +71,25 @@ export class ClaudeJsonClient {
       .map((block) => block.text)
       .join("");
 
-    try {
-      return { kind: "ok", json: JSON.parse(text) };
-    } catch (cause) {
-      throw new AIServiceError("Model returned invalid JSON", { cause });
-    }
+    return parseJson(text);
   }
 }
 
-export class ClaudeExtractionModel implements ExtractionModel {
-  private readonly claude: ClaudeJsonClient;
-
-  constructor(options: ClaudeModelOptions = {}) {
-    this.claude = new ClaudeJsonClient(options);
+/** Shared by every client. Invalid JSON → AIServiceError so the one-retry logic applies. */
+export function parseJson(text: string): JsonResult {
+  try {
+    return { kind: "ok", json: JSON.parse(text) };
+  } catch (cause) {
+    throw new AIServiceError("Model returned invalid JSON", { cause });
   }
+}
+
+/** Any JsonClient → ExtractionModel. Output checked with zod, whatever the provider. */
+export class JsonExtractionModel implements ExtractionModel {
+  constructor(private readonly client: JsonClient) {}
 
   async run(input: ModelInput): Promise<ModelRunResult> {
-    const result = await this.claude.request({ ...input, schema: MODEL_TURN_JSON_SCHEMA });
+    const result = await this.client.request({ ...input, schema: MODEL_TURN_JSON_SCHEMA, schemaName: "service_request_turn" });
     if (result.kind === "refused") return result;
 
     const parsed = modelTurnSchema.safeParse(result.json);
@@ -85,5 +97,11 @@ export class ClaudeExtractionModel implements ExtractionModel {
       throw new AIServiceError(`Model output failed validation: ${parsed.error.message}`);
     }
     return { kind: "ok", output: parsed.data };
+  }
+}
+
+export class ClaudeExtractionModel extends JsonExtractionModel {
+  constructor(options: ClaudeModelOptions = {}) {
+    super(new ClaudeJsonClient(options));
   }
 }

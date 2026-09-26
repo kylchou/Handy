@@ -1,5 +1,6 @@
 import type { MatchingService, QualificationLevel, ServiceRequestDTO, WorkerCandidate } from "@handy/contracts";
 import { haversineMiles } from "./geo.js";
+import { needsFor, requirementFit } from "./requirements.js";
 import {
   distanceScore,
   experienceScore,
@@ -7,6 +8,7 @@ import {
   ratingScore,
   round1,
   totalScore,
+  weightsFor,
 } from "./scoring.js";
 import type { FindMatchesOptions, MatchableRequest, RankedWorkerMatch, ScoreBreakdown } from "./types.js";
 
@@ -45,6 +47,8 @@ export function rankWorkers(
   const radiusMultiplier = options.radiusMultiplier ?? 1;
   const requireVerified = options.requireVerified ?? true;
   const excluded = new Set(options.excludeWorkerIds ?? []);
+  const weights = weightsFor(request.urgency);
+  const needs = needsFor(request.serviceCategoryId, request.specialRequirements);
 
   const matches: RankedWorkerMatch[] = [];
 
@@ -64,8 +68,10 @@ export function rankWorkers(
     const radius = worker.serviceRadius * radiusMultiplier;
     if (distance != null && distance > radius) continue;
 
+    // Special requirements (lifting, mobility, ladder, memory loss) → lower qualification score if level too low.
+    const fit = requirementFit(qualification.qualificationLevel, needs);
     const breakdown: ScoreBreakdown = {
-      qualification: qualificationScore(qualification.qualificationLevel),
+      qualification: Math.max(0, qualificationScore(qualification.qualificationLevel) - fit.penalty),
       availability: availability.score,
       distance: distanceScore(distance, radius),
       rating: ratingScore(worker.rating, worker.ratingCount),
@@ -73,7 +79,7 @@ export function rankWorkers(
     };
 
     const bonus = familiarityBonus(worker);
-    const score = Math.min(100, round1(totalScore(breakdown) + bonus));
+    const score = Math.min(100, round1(totalScore(breakdown, weights) + bonus));
 
     matches.push({
       workerId: worker.workerId,
@@ -83,7 +89,10 @@ export function rankWorkers(
       availabilityMatch: !availability.partial,
       rating: worker.rating,
       breakdown: roundBreakdown(breakdown),
-      reasons: buildReasons(distance, worker, qualification.qualificationLevel, availability.partial, bonus > 0),
+      reasons: [
+        ...buildReasons(distance, worker, qualification.qualificationLevel, availability.partial, bonus > 0),
+        ...fit.met.map((label) => `Experienced with ${label}`),
+      ],
     });
   }
 

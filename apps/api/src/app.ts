@@ -65,7 +65,9 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
   const integrations =
     opts.ai && opts.matching
       ? { ai: opts.ai, matching: opts.matching }
-      : await loadIntegrations({ ai: config.aiServiceModule, matching: config.matchingServiceModule }, app.log);
+      : await loadIntegrations({ ai: config.aiServiceModule, matching: config.matchingServiceModule }, app.log, {
+          aiTimeoutSeconds: config.aiTimeoutSeconds,
+        });
 
   const bus = new EventBus();
   const revocations = new TokenRevocations();

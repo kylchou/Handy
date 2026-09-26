@@ -26,6 +26,7 @@ The host tells the app which port to use with `PORT`, and the API picks that up 
 | `DATABASE_URL` | the host's Postgres URL. See below if you skip this | recommended |
 | `DATABASE_SSL` | `true` if the database needs SSL and the URL doesn't already have `sslmode=require` | sometimes |
 | `DOCS_ENABLED` | `true` if you want the `/docs` page online. It's off in production by default | no |
+| `AI_TIMEOUT_SECONDS` | seconds the real AI gets per message before the built-in one answers instead. Default 30 | no |
 | `GEOCODER_CONTACT` | a team email, sent to OpenStreetMap when looking up addresses (they ask for one) | no |
 
 Everything else in `.env.example` has a sensible default.

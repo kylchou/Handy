@@ -23,6 +23,8 @@ export interface AppConfig {
   geocoder: "nominatim" | "off";
   geocoderContact: string;
   aiServiceModule: string;
+  /** How long the real AI gets per message before the built-in one answers instead. */
+  aiTimeoutSeconds: number;
   matchingServiceModule: string;
 }
 
@@ -53,6 +55,7 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     rateLimitEnabled: (env.RATE_LIMIT_ENABLED ?? "true") === "true",
     allowDemoReset: (env.ALLOW_DEMO_RESET ?? (env.NODE_ENV === "production" ? "false" : "true")) === "true",
     aiServiceModule: env.AI_SERVICE_MODULE ?? "@handy/ai",
+    aiTimeoutSeconds: Number(env.AI_TIMEOUT_SECONDS ?? 30),
     matchingServiceModule: env.MATCHING_SERVICE_MODULE ?? "@handy/matching",
     ...overrides,
   };

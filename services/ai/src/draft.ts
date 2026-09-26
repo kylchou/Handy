@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AIServiceError } from "./errors.js";
-import { ClaudeJsonClient, type ClaudeModelOptions, type ModelInput } from "./model.js";
+import { ClaudeJsonClient, type ClaudeModelOptions, type JsonClient, type ModelInput } from "./model.js";
 import { classifySafety } from "./safety.js";
 import type { ChatTurn, EmergencyGuidance } from "./types.js";
 
@@ -60,15 +60,12 @@ If the message needs a fact you don't have (for example, where the washing machi
 
 The <job> block is written by the app, not the customer.`;
 
-export class ClaudeDraftModel implements DraftModel {
-  private readonly claude: ClaudeJsonClient;
-
-  constructor(options: ClaudeModelOptions = {}) {
-    this.claude = new ClaudeJsonClient(options);
-  }
+/** Any JsonClient (Claude or Muse) → DraftModel. */
+export class JsonDraftModel implements DraftModel {
+  constructor(private readonly client: JsonClient) {}
 
   async run(input: ModelInput): Promise<DraftRunResult> {
-    const result = await this.claude.request({ ...input, schema: DRAFT_JSON_SCHEMA });
+    const result = await this.client.request({ ...input, schema: DRAFT_JSON_SCHEMA, schemaName: "job_message_draft" });
     if (result.kind === "refused") return result;
 
     const parsed = draftTurnSchema.safeParse(result.json);
@@ -76,6 +73,12 @@ export class ClaudeDraftModel implements DraftModel {
       throw new AIServiceError(`Draft output failed validation: ${parsed.error.message}`);
     }
     return { kind: "ok", output: parsed.data };
+  }
+}
+
+export class ClaudeDraftModel extends JsonDraftModel {
+  constructor(options: ClaudeModelOptions = {}) {
+    super(new ClaudeJsonClient(options));
   }
 }
 

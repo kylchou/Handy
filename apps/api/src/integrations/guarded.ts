@@ -16,7 +16,7 @@ import {
 
 type Logger = { warn: (msg: string) => void };
 
-const AI_TIMEOUT_MS = 20_000;
+const DEFAULT_AI_TIMEOUT_MS = 30_000;
 const MATCHING_TIMEOUT_MS = 5_000;
 
 /**
@@ -31,11 +31,12 @@ export class GuardedAIService implements AIService {
     private primary: AIService,
     private backup: AIService,
     private log: Logger,
+    private timeoutMs = DEFAULT_AI_TIMEOUT_MS,
   ) {}
 
   async processMessage(conversationId: string, message: string, context: AIConversationContext): Promise<AIResponse> {
     try {
-      const raw = await withTimeout(this.primary.processMessage(conversationId, message, context), AI_TIMEOUT_MS);
+      const raw = await withTimeout(this.primary.processMessage(conversationId, message, context), this.timeoutMs);
       return cleanAIResponse(raw, context);
     } catch (err) {
       this.log.warn(`AI service failed, using the built-in one for this message: ${(err as Error).message}`);

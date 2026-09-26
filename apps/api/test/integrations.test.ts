@@ -151,3 +151,14 @@ describe("GuardedMatchingService", () => {
     ]);
   });
 });
+
+describe("AI timeout", () => {
+  it("answers with the built-in assistant when the real one is too slow", async () => {
+    const log = quietLog();
+    const slow: AIService = { processMessage: () => new Promise(() => {}) };
+    const ai = new GuardedAIService(slow, new FallbackAIService(), log, 50);
+    const res = await ai.processMessage("c1", "I need my lawn mowed", context);
+    expect(res.extractedData.serviceCategoryId).toBe("LAWN_CARE");
+    expect(log.warnings.join()).toContain("no answer after");
+  });
+});
