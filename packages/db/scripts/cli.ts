@@ -18,7 +18,7 @@ async function main() {
     if (url.startsWith("pglite://") && url !== "pglite://memory") {
       rmSync(path.resolve(root, url.slice("pglite://".length)), { recursive: true, force: true });
     } else {
-      const handle = await createDb(url);
+      const handle = await createDb(url, { ssl: process.env.DATABASE_SSL === "true" });
       await handle.db.execute(sql`DROP SCHEMA public CASCADE; CREATE SCHEMA public; DROP SCHEMA IF EXISTS drizzle CASCADE;`);
       await handle.close();
     }
@@ -28,7 +28,7 @@ async function main() {
     console.error("Usage: cli.ts <migrate|seed|reset>");
     process.exit(1);
   }
-  const handle = await createDb(url);
+  const handle = await createDb(url, { ssl: process.env.DATABASE_SSL === "true" });
   await handle.migrate();
   console.log(`Migrations applied (${handle.driver}).`);
   if (command === "seed" || command === "reset") await seed(handle.db);

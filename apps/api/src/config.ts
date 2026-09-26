@@ -6,6 +6,8 @@ export interface AppConfig {
   port: number;
   host: string;
   databaseUrl: string;
+  /** Use SSL without checking the certificate, for hosted Postgres that needs it. */
+  databaseSsl: boolean;
   jwtSecret: string;
   jwtExpiresIn: string;
   corsOrigins: string[];
@@ -28,9 +30,11 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
   loadEnv({ path: path.join(findRepoRoot(), ".env"), quiet: true });
   const env = process.env;
   const cfg: AppConfig = {
-    port: Number(env.API_PORT ?? 4000),
+    // Hosts like Render, Railway and Fly tell the app which port to use with PORT.
+    port: Number(env.PORT ?? env.API_PORT ?? 4000),
     host: env.API_HOST ?? "0.0.0.0",
     databaseUrl: env.DATABASE_URL ?? "pglite://.data/handy",
+    databaseSsl: env.DATABASE_SSL === "true",
     jwtSecret: env.JWT_SECRET ?? "dev-only-change-me",
     jwtExpiresIn: env.JWT_EXPIRES_IN ?? "7d",
     corsOrigins: (env.CORS_ORIGINS ?? "http://localhost:3000,http://localhost:3001,http://localhost:3002")

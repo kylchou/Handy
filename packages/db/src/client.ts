@@ -34,7 +34,7 @@ export function findRepoRoot(start = process.cwd()): string {
  * - `pglite://memory`: in-memory Postgres, used by the tests
  * - `pglite://<path>`: embedded Postgres saved at <path> (relative to the repo root)
  */
-export async function createDb(url: string): Promise<DbHandle> {
+export async function createDb(url: string, opts: { ssl?: boolean } = {}): Promise<DbHandle> {
   if (url.startsWith("pglite://")) {
     const { PGlite } = await import("@electric-sql/pglite");
     const { drizzle } = await import("drizzle-orm/pglite");
@@ -61,7 +61,10 @@ export async function createDb(url: string): Promise<DbHandle> {
     const { default: pg } = await import("pg");
     const { drizzle } = await import("drizzle-orm/node-postgres");
     const { migrate } = await import("drizzle-orm/node-postgres/migrator");
-    const pool = new pg.Pool({ connectionString: url, max: 10 });
+    // Hosted databases often need SSL with a certificate Node doesn't know about.
+    const pool = new pg.Pool({ connectionString: url, max: 10, ...(opts.ssl && { ssl: { rejectUnauthorized: false } }) });
+    // A dropped idle connection shouldn't crash the server; the pool just makes a new one.
+    pool.on("error", (err) => console.error("database connection error:", err.message));
     const db = drizzle(pool, { schema });
     return {
       db: db as unknown as Database,
