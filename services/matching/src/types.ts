@@ -9,7 +9,8 @@ import type { ServiceRequestDTO, WorkerMatch } from "@handy/contracts";
 export type MatchableRequest = Pick<
   ServiceRequestDTO,
   "serviceCategoryId" | "latitude" | "longitude" | "requestedDate" | "requestedStartTime" | "requestedEndTime"
->;
+> &
+  Partial<Pick<ServiceRequestDTO, "urgency" | "specialRequirements">>;
 
 export interface ScoreBreakdown {
   qualification: number;
