@@ -2,6 +2,29 @@
 
 Our HackGT project. It's an app where older adults can get help with everyday stuff (errands, rides, small repairs around the house, etc.) just by typing or saying what they need. An AI turns that into a job and sends it to nearby workers who can do it.
 
+## How it works
+
+1. The customer chats with the AI (typing or voice) about what they need.
+2. The AI figures out the type of job, date, time, and location, and asks for anything missing.
+3. The customer confirms, and the job gets sent to the best nearby workers who are qualified, verified, and free at that time.
+4. The first worker to accept gets it. Everyone else's offer goes away.
+5. The worker updates the status (on the way, arrived, started, done) and the customer sees it live.
+6. The customer rates the worker when it's done.
+
+## What the backend handles
+
+- AI chat that turns a conversation into a job request
+- Matching workers by qualifications, schedule, distance, rating, and experience
+- Only verified workers get jobs
+- Workers can't accept two jobs at the same time
+- Offers expire after 5 minutes if the worker doesn't respond, and the job goes to the next person
+- If a worker cancels, the job goes back out to other workers
+- Anything that sounds like an emergency is blocked and the user is told to call 911
+- Workers only see a general area until they accept, then they get the full address
+- Customer and worker chat, so nobody has to share phone numbers
+- Live updates over SSE or WebSockets, plus saved notifications
+- Ratings, job history, worker earnings, and admin stats
+
 ## Setup
 
 You need Node 20+ and pnpm 10 (`npm i -g pnpm`).

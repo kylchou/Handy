@@ -236,6 +236,8 @@ export interface JobOfferDTO {
   estimatedPayCents: number;
   customer: CustomerPublicDTO;
   createdAt: string;
+  /** After this the offer can't be accepted and goes to other workers. */
+  expiresAt: string;
 }
 
 export interface JobMessageDTO {

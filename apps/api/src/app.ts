@@ -145,9 +145,12 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
   );
 
   if (opts.backgroundJobs ?? true) {
-    const interval = Math.max(10, Math.min(60, config.matchExpandAfterSeconds / 2)) * 1000;
+    const interval = Math.max(5, Math.min(60, config.matchExpandAfterSeconds / 2, config.matchOfferTtlSeconds / 4)) * 1000;
     const timer = setInterval(() => {
-      services.matching.expandStale().catch((err) => app.log.error({ err }, "expandStale failed"));
+      services.matching
+        .expireOffers()
+        .then(() => services.matching.expandStale())
+        .catch((err) => app.log.error({ err }, "matching sweep failed"));
     }, interval);
     timer.unref();
     app.addHook("onClose", async () => clearInterval(timer));

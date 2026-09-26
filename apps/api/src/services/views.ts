@@ -98,6 +98,6 @@ export async function offerViews(ctx: ServiceContext, offers: JobOfferRow[]): Pr
   return offers.flatMap((o) => {
     const r = requestById.get(o.requestId);
     const customer = r && customerById.get(r.customerId);
-    return r && customer ? [toJobOfferDTO(o, r, categoryById.get(r.serviceCategoryId), customer)] : [];
+    return r && customer ? [toJobOfferDTO(o, r, categoryById.get(r.serviceCategoryId), customer, ctx.config.matchOfferTtlSeconds)] : [];
   });
 }

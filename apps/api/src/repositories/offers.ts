@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, ne, sql } from "drizzle-orm";
 import { jobOffers, serviceRequests, type Database, type JobOfferRow } from "@handy/db";
 
 export const offersRepo = {
@@ -28,12 +28,21 @@ export const offersRepo = {
   async byRequest(db: Database, requestId: string) {
     return db.select().from(jobOffers).where(eq(jobOffers.requestId, requestId)).orderBy(desc(jobOffers.score));
   },
-  async pendingForWorker(db: Database, workerId: string) {
+  /** Pending offers created after `notBefore` (older ones are overdue and about to expire). */
+  async pendingForWorker(db: Database, workerId: string, notBefore: Date) {
     return db
       .select()
       .from(jobOffers)
-      .where(and(eq(jobOffers.workerId, workerId), eq(jobOffers.status, "PENDING")))
+      .where(and(eq(jobOffers.workerId, workerId), eq(jobOffers.status, "PENDING"), gt(jobOffers.createdAt, notBefore)))
       .orderBy(desc(jobOffers.createdAt));
+  },
+  /** Marks pending offers created before `before` as EXPIRED; returns them. */
+  async expireOlderThan(db: Database, before: Date) {
+    return db
+      .update(jobOffers)
+      .set({ status: "EXPIRED", respondedAt: new Date() })
+      .where(and(eq(jobOffers.status, "PENDING"), lt(jobOffers.createdAt, before)))
+      .returning();
   },
   /** A worker's pending offers along with each request's date and time window. */
   async pendingWithWindows(db: Database, workerId: string) {

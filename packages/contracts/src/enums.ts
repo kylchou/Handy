@@ -65,6 +65,8 @@ export const JobOfferStatus = {
   DECLINED: "DECLINED",
   /** Another worker accepted first, or the request was cancelled. */
   WITHDRAWN: "WITHDRAWN",
+  /** The worker didn't respond in time. */
+  EXPIRED: "EXPIRED",
 } as const;
 export type JobOfferStatus = (typeof JobOfferStatus)[keyof typeof JobOfferStatus];
 export const JOB_OFFER_STATUSES = values(JobOfferStatus);

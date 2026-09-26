@@ -327,6 +327,60 @@ describe("safety and re-matching", () => {
     expect(conflict.body.error.code).toBe("SCHEDULE_CONFLICT");
   });
 
+  it("expires offers nobody answers and passes the job to the next worker", async () => {
+    // A second app on the same database that only offers each request to one worker at a time.
+    const oneAtATime = await buildApp({
+      config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "", matchInitialOffers: 1 }),
+      dbHandle: handle,
+      logger: false,
+      backgroundJobs: false,
+    });
+    const call2 = async <T,>(method: string, url: string, who: string, body?: unknown) => {
+      const res = await oneAtATime.app.inject({
+        method: method as "GET",
+        url: `/api/v1${url}`,
+        headers: { authorization: `Bearer ${tokens[who]}` },
+        ...(body !== undefined && { payload: body as object }),
+      });
+      return { status: res.statusCode, body: res.json() as T };
+    };
+
+    const conv = (await call2<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    const submitted = await call2<CreateServiceRequestResponse>("POST", "/requests", "margaret", {
+      conversationId: conv.id,
+      serviceCategoryId: "MOVING_ASSISTANCE",
+      description: "Move a table",
+      location: "123 Main Street, Atlanta, GA",
+      requestedDate: addDays(todayIn("America/New_York"), 5),
+      requestedStartTime: "10:00",
+    });
+    const requestId = submitted.body.request.id;
+    expect(submitted.body.notifiedWorkerCount).toBe(1);
+
+    const jamesOffer = (await call2<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.find((o) => o.requestId === requestId)!;
+    expect(Date.parse(jamesOffer.expiresAt) - Date.parse(jamesOffer.createdAt)).toBe(300_000);
+    expect((await call2<JobOfferDTO[]>("GET", "/jobs/available", "tom")).body.some((o) => o.requestId === requestId)).toBe(false);
+
+    // Jump past the 5 minute window.
+    const events: RealtimeEvent[] = [];
+    const unsubscribe = oneAtATime.bus.subscribe(ids.james!, (e) => events.push(e));
+    const expired = await oneAtATime.services.matching.expireOffers(new Date(Date.now() + 301_000));
+    unsubscribe();
+    expect(expired).toBeGreaterThanOrEqual(1);
+    expect(events.some((e) => e.type === "JOB_NO_LONGER_AVAILABLE" && e.data.requestId === requestId)).toBe(true);
+
+    expect((await call2<JobOfferDTO[]>("GET", "/jobs/available", "james")).body.some((o) => o.requestId === requestId)).toBe(false);
+    const tooLate = await call2<{ error: { code: string } }>("POST", `/jobs/offers/${jamesOffer.id}/accept`, "james");
+    expect(tooLate.body.error.code).toBe("JOB_NO_LONGER_AVAILABLE");
+
+    // Tom is next in line and can take it.
+    const tomOffer = (await call2<JobOfferDTO[]>("GET", "/jobs/available", "tom")).body.find((o) => o.requestId === requestId)!;
+    expect(tomOffer).toBeDefined();
+    expect((await call2("POST", `/jobs/offers/${tomOffer.id}/accept`, "tom")).status).toBe(200);
+
+    await oneAtATime.app.close();
+  });
+
   it("does not offer jobs to unverified workers until an admin verifies them", async () => {
     const workers = await call<Array<{ id: string; firstName: string }>>("GET", "/admin/workers", "admin");
     const linda = workers.body.find((w) => w.firstName === "Linda")!;

@@ -13,6 +13,7 @@ export interface AppConfig {
   seedOnStart: boolean;
   matchInitialOffers: number;
   matchExpandAfterSeconds: number;
+  matchOfferTtlSeconds: number;
   platformFeeCents: number;
   aiServiceModule: string;
   matchingServiceModule: string;
@@ -35,6 +36,7 @@ export function loadConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     seedOnStart: (env.SEED_ON_START ?? "true") === "true",
     matchInitialOffers: Number(env.MATCH_INITIAL_OFFERS ?? 5),
     matchExpandAfterSeconds: Number(env.MATCH_EXPAND_AFTER_SECONDS ?? 120),
+    matchOfferTtlSeconds: Number(env.MATCH_OFFER_TTL_SECONDS ?? 300),
     platformFeeCents: Number(env.PLATFORM_FEE_CENTS ?? 500),
     aiServiceModule: env.AI_SERVICE_MODULE ?? "@handy/ai",
     matchingServiceModule: env.MATCHING_SERVICE_MODULE ?? "@handy/matching",

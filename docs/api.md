@@ -65,7 +65,7 @@ Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`.
 
 | Endpoint | Who | Notes |
 | --- | --- | --- |
-| `GET /jobs/available` | worker | Jobs offered to this worker. Only shows a general area, the full address shows up after accepting. |
+| `GET /jobs/available` | worker | Jobs offered to this worker. Only shows a general area, the full address shows up after accepting. Each offer has an `expiresAt` (5 minutes by default, set with `MATCH_OFFER_TTL_SECONDS`). After that it can't be accepted and goes to the next worker. |
 | `POST /jobs/offers/:offerId/accept` | worker | First to accept gets it. Anyone after that gets 409 `JOB_NO_LONGER_AVAILABLE`. If the worker already has a job at an overlapping time it's 409 `SCHEDULE_CONFLICT`. Accepting also removes the worker's other offers that overlap with it. |
 | `POST /jobs/offers/:offerId/decline` | worker | |
 | `GET /jobs` | logged in | Your jobs (admins get all). Optional `?status=`. |
@@ -130,7 +130,7 @@ First message is `{ type: "CONNECTED", userId }`. After that every event is `{ t
 | `WORKER_MATCHED` | customer | Request was sent to `notifiedWorkerCount` workers |
 | `JOB_OFFERED` | worker | New job for them (`data.offer`) |
 | `JOB_ACCEPTED` | customer, worker | A worker accepted |
-| `JOB_NO_LONGER_AVAILABLE` | other offered workers | Someone else accepted or it got cancelled, remove it from the list |
+| `JOB_NO_LONGER_AVAILABLE` | offered workers | Someone else accepted, it got cancelled, or the offer expired. Remove it from the list. |
 | `WORKER_EN_ROUTE`, `WORKER_ARRIVED`, `JOB_STARTED`, `JOB_COMPLETED` | customer, worker | Status changed |
 | `JOB_CANCELLED` | customer, worker | Includes `cancelledBy` |
 | `REQUEST_CANCELLED` | customer | |
@@ -145,7 +145,7 @@ Admins get every event.
 The backend uses the interfaces in [ai.ts](../packages/contracts/src/ai.ts) and [matching.ts](../packages/contracts/src/matching.ts). Your services don't need to touch the database, the backend passes in everything and saves the results.
 
 - `@handy/ai` should export `createAIService()`. The backend calls `processMessage(conversationId, message, context)`, where `context` has the chat history, current draft, customer's name and home address, today's date, and the categories. Return an `AIResponse`. In `extractedData`, `undefined` means don't change the field and `null` means clear it.
-- `@handy/matching` should export `createMatchingService()`. The backend calls `findMatches(request, candidates)` with workers that already have their qualifications, schedules, bookings, and experience loaded. Return `WorkerMatch[]` sorted best first. The top `MATCH_INITIAL_OFFERS` workers get the job first, and if nobody accepts after `MATCH_EXPAND_AFTER_SECONDS` it goes to everyone else who qualifies.
+- `@handy/matching` should export `createMatchingService()`. The backend calls `findMatches(request, candidates)` with workers that already have their qualifications, schedules, bookings, and experience loaded. Return `WorkerMatch[]` sorted best first. The top `MATCH_INITIAL_OFFERS` workers get the job first. If their offers expire without anyone accepting, it goes to the next workers, and after `MATCH_EXPAND_AFTER_SECONDS` it goes to everyone else who qualifies.
 
 When they're ready, add `"@handy/ai": "workspace:*"` and `"@handy/matching": "workspace:*"` to `apps/api/package.json` and restart. The startup log says which one is being used.
 

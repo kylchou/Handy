@@ -54,7 +54,7 @@ export class JobService {
   // ---------- Offers (worker marketplace) ----------
 
   async available(actor: Actor): Promise<JobOfferDTO[]> {
-    return offerViews(this.ctx, await offersRepo.pendingForWorker(this.ctx.db, actor.id));
+    return offerViews(this.ctx, await offersRepo.pendingForWorker(this.ctx.db, actor.id, this.matching.offerCutoff()));
   }
 
   /** First valid worker to accept gets the job; everyone else's offer is withdrawn. */
@@ -74,7 +74,9 @@ export class JobService {
         await workersRepo.lockProfile(tx, actor.id);
         const request = await requestsRepo.getForUpdate(tx, offer.requestId);
         const freshOffer = await offersRepo.get(tx, offerId);
-        if (!request || request.status !== "SEARCHING" || freshOffer?.status !== "PENDING") {
+        // An overdue offer is treated as expired even if the sweep hasn't marked it yet.
+        const overdue = !freshOffer || freshOffer.createdAt <= this.matching.offerCutoff();
+        if (!request || request.status !== "SEARCHING" || freshOffer?.status !== "PENDING" || overdue) {
           throw new ApiError("JOB_NO_LONGER_AVAILABLE", "Sorry, this job is no longer available.");
         }
         const overlaps = (w: { date: string; startTime: string; endTime: string }) =>
