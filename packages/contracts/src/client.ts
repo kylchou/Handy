@@ -189,6 +189,8 @@ export function createApiClient(options: ApiClientOptions) {
     },
 
     conversations: {
+      /** Past chats, newest first. Only chats where the customer said something. */
+      list: (): R<"GET /ai/conversations"> => get("/ai/conversations"),
       create: (): R<"POST /ai/conversations"> => post("/ai/conversations"),
       get: (conversationId: string): R<"GET /ai/conversations/:conversationId"> => get(`/ai/conversations/${id(conversationId)}`),
       sendMessage: (conversationId: string, content: string): R<"POST /ai/conversations/:conversationId/messages"> =>

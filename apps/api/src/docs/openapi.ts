@@ -65,6 +65,7 @@ const ROUTE_DOCS: Record<keyof ApiResponses, RouteDoc> = {
   "GET /caregivers/me/people": { tag: "Caregivers", summary: "Caregiver dashboard", returns: "CaregiverPersonDTO[]", who: "caregiver", notes: "Active jobs, open requests and recent history for each linked person. Never includes arrival codes." },
   "DELETE /caregivers/me/people/:customerId": { tag: "Caregivers", summary: "Unlink myself", returns: "nothing (204)", who: "caregiver", status: 204 },
 
+  "GET /ai/conversations": { tag: "AI chat", summary: "Past chats, newest first", returns: "ConversationSummaryDTO[]", who: "customer", notes: "Up to 30. Chats with no customer message yet are left out." },
   "POST /ai/conversations": { tag: "AI chat", summary: "Start a conversation", returns: "CreateConversationResponse", who: "customer", status: 201 },
   "GET /ai/conversations/:conversationId": { tag: "AI chat", summary: "Conversation, draft and messages", returns: "ConversationDetailResponse", who: "customer, admin" },
   "POST /ai/conversations/:conversationId/messages": { tag: "AI chat", summary: "Send a message to the assistant", returns: "SendConversationMessageResponse", who: "customer", body: sendConversationMessageSchema, notes: "When conversation.readyToSubmit is true, show the confirmation card. If emergency is set, show it prominently. Limited to 20 per minute." },

@@ -23,13 +23,20 @@ export const viewport: Viewport = {
   maximumScale: 5,
 };
 
+// Applies saved display settings (lib/display.ts) before first paint. Kept tiny and inline on purpose.
+const applyDisplayScript = `try{var d=JSON.parse(localStorage.getItem("handy_display")||"{}"),c=document.documentElement.classList;if(d.textSize==="LARGE")c.add("text-size-large");if(d.textSize==="LARGEST")c.add("text-size-largest");if(d.highContrast)c.add("pref-high-contrast")}catch(e){}`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={atkinson.variable}>
+    // suppressHydrationWarning: the script below adds display classes before React loads.
+    <html lang="en" className={atkinson.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: applyDisplayScript }} />
+      </head>
       <body className="min-h-screen bg-warm-fade text-ink">{children}</body>
     </html>
   );

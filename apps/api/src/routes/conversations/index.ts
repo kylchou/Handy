@@ -5,6 +5,8 @@ import type { IdParams, RouteDeps } from "../types";
 
 /** AI assistant conversations. The frontend never calls the LLM directly. */
 export async function conversationRoutes(app: FastifyInstance, { services, guards, limits }: RouteDeps) {
+  app.get("/ai/conversations", { preHandler: guards.customer }, async (req) => services.conversations.list(req.user));
+
   app.post("/ai/conversations", { preHandler: guards.customer, config: { rateLimit: limits.newConversation } }, async (req, reply) => {
     reply.code(201);
     return services.conversations.create(req.user);

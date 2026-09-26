@@ -3,14 +3,17 @@
 import { FormEvent, useEffect, useState } from "react";
 import NavBar from "@/components/NavBar";
 import BigButton from "@/components/BigButton";
-import { api, friendlyError, useRequireLogin } from "@/lib/api";
-import type { CustomerProfileDTO } from "@/lib/types";
+import { api, friendlyError, saveAccessibility, useRequireLogin } from "@/lib/api";
+import type { CustomerProfileDTO, UserDTO } from "@/lib/types";
 
 type Channel = "SMS" | "PHONE" | "IN_APP";
 const CHANNEL_LABELS: Record<Channel, string> = { SMS: "Text message", PHONE: "Phone call", IN_APP: "In-app message" };
 
 /** The form keeps plain strings; the backend stores a few of them as small objects. */
 interface ProfileForm {
+  firstName: string;
+  lastName: string;
+  phone: string;
   address: string;
   emergencyName: string;
   emergencyPhone: string;
@@ -18,13 +21,16 @@ interface ProfileForm {
   preferredChannel: Channel;
 }
 
-function toForm(p: CustomerProfileDTO): ProfileForm {
+function toForm(user: UserDTO, p: CustomerProfileDTO | null): ProfileForm {
   return {
-    address: p.address ?? "",
-    emergencyName: p.emergencyContact?.name ?? "",
-    emergencyPhone: p.emergencyContact?.phone ?? "",
-    accessibilityNotes: p.accessibilityPreferences.mobilityNotes ?? "",
-    preferredChannel: p.communicationPreferences.preferredChannel ?? "IN_APP",
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: user.phone ?? "",
+    address: p?.address ?? "",
+    emergencyName: p?.emergencyContact?.name ?? "",
+    emergencyPhone: p?.emergencyContact?.phone ?? "",
+    accessibilityNotes: p?.accessibilityPreferences.mobilityNotes ?? "",
+    preferredChannel: p?.communicationPreferences.preferredChannel ?? "IN_APP",
   };
 }
 
@@ -36,9 +42,9 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.customers
-      .getProfile()
-      .then((p) => setProfile(toForm(p)))
+    api.auth
+      .me()
+      .then((me) => setProfile(toForm(me.user, me.customerProfile)))
       .catch((err) => setError(friendlyError(err)));
   }, []);
 
@@ -50,17 +56,27 @@ export default function ProfilePage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     if (!profile) return;
+    if (!profile.firstName.trim() || !profile.lastName.trim()) {
+      setError("Please fill in your first and last name.");
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
       const hasContact = profile.emergencyName.trim() && profile.emergencyPhone.trim();
+      const user = await api.users.updateMe({
+        firstName: profile.firstName.trim(),
+        lastName: profile.lastName.trim(),
+        phone: profile.phone.trim() || null,
+      });
+      // Merged, so settings like text size and read-aloud aren't wiped.
+      await saveAccessibility({ mobilityNotes: profile.accessibilityNotes.trim() });
       const next = await api.customers.updateProfile({
         address: profile.address.trim() || null,
         emergencyContact: hasContact ? { name: profile.emergencyName.trim(), phone: profile.emergencyPhone.trim() } : null,
-        accessibilityPreferences: { mobilityNotes: profile.accessibilityNotes },
         communicationPreferences: { preferredChannel: profile.preferredChannel },
       });
-      setProfile(toForm(next));
+      setProfile(toForm(user, next));
       setSaved(true);
     } catch (err) {
       setError(friendlyError(err));
@@ -84,9 +100,30 @@ export default function ProfilePage() {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <Field
+          label="First name"
+          value={profile.firstName}
+          onChange={(v) => update("firstName", v)}
+          autoComplete="given-name"
+        />
+        <Field
+          label="Last name"
+          value={profile.lastName}
+          onChange={(v) => update("lastName", v)}
+          autoComplete="family-name"
+        />
+        <Field
+          label="Phone number"
+          value={profile.phone}
+          onChange={(v) => update("phone", v)}
+          type="tel"
+          autoComplete="tel"
+        />
+        <Field
           label="Address"
           value={profile.address}
           onChange={(v) => update("address", v)}
+          autoComplete="street-address"
+          hint="Used when you say “at my house.”"
         />
         <Field
           label="Emergency contact name"
@@ -98,6 +135,7 @@ export default function ProfilePage() {
           label="Emergency contact phone"
           value={profile.emergencyPhone}
           onChange={(v) => update("emergencyPhone", v)}
+          type="tel"
         />
         <Field
           label="Accessibility preferences"
@@ -137,7 +175,7 @@ export default function ProfilePage() {
         )}
 
         {saved && (
-          <p className="rounded-control bg-accent-light p-3 text-accent-dark">
+          <p role="status" className="rounded-control bg-accent-light p-3 text-accent-dark">
             Your profile has been saved.
           </p>
         )}
@@ -158,12 +196,16 @@ function Field({
   onChange,
   hint,
   textarea,
+  type = "text",
+  autoComplete,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   hint?: string;
   textarea?: boolean;
+  type?: "text" | "tel";
+  autoComplete?: string;
 }) {
   const id = label.toLowerCase().replace(/\s+/g, "-");
   return (
@@ -183,9 +225,10 @@ function Field({
       ) : (
         <input
           id={id}
-          type="text"
+          type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          autoComplete={autoComplete}
           className="w-full rounded-control border-2 border-field bg-white px-4 py-3 text-lg text-ink"
         />
       )}

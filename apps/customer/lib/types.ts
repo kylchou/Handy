@@ -4,7 +4,10 @@
  * them so components can keep importing from "@/lib/types".
  */
 export type {
+  AccessibilityPreferences,
   ConversationDTO,
+  ConversationDetailResponse,
+  ConversationSummaryDTO,
   CustomerHistoryItemDTO,
   CustomerProfileDTO,
   JobDetailDTO,
@@ -15,6 +18,7 @@ export type {
   ServiceCategoryCode,
   ServiceRequestDTO,
   ServiceRequestDraft,
+  TextSize,
   UserDTO,
   WorkerPublicDTO,
 } from "@handy/contracts";
