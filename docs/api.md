@@ -83,6 +83,7 @@ A few things to know:
 | `GET /customers/me/profile` | |
 | `PUT /customers/me/profile` | Address, coordinates, accessibility/communication preferences, emergency contact |
 | `GET /customers/me/history` | Everything for the history screen (service, worker, date, status, price, rating) |
+| `GET /customers/me/past-workers` | Everyone who's helped this customer before, with their last rating. For a "Book James again" button. |
 
 ### AI chat
 
@@ -107,6 +108,8 @@ If `emergency` isn't null, show it clearly. It tells the user to call 911, and t
 | `GET /requests/:id` | customer, assigned worker, admin | Includes `pendingOfferCount` and `jobId` once someone accepts. |
 | `POST /requests/:id/cancel` | customer, admin | Only while `SEARCHING` |
 | `GET /requests/:id/matches` | customer, admin | Ranked workers with scores and reasons. Mostly for the admin dashboard. |
+
+**Booking someone again.** Send `preferredWorkerId` when creating a request (or the AI sets it when the customer says "Can James come back?" or "same person as last time"). The request goes to that worker alone first. If they decline or don't answer in time, it goes to everyone like normal. If they can't do it at all (not available, doesn't do that kind of job), the customer gets told right away and it goes out to everyone. Workers the customer rated 4–5 stars also get a bump in matching, and workers they rated 1–2 stars never get their jobs again.
 
 Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`, or `EXPIRED` if nobody accepted before the requested time window ended. When a request expires, the customer gets a `REQUEST_EXPIRED` event and a notification asking if they want to pick another time. Requests for a time that's already passed get rejected with a 400.
 
@@ -255,8 +258,8 @@ Admins get every event.
 
 The backend uses the interfaces in [ai.ts](../packages/contracts/src/ai.ts) and [matching.ts](../packages/contracts/src/matching.ts). Your services don't need to touch the database, the backend passes in everything and saves the results.
 
-- `@handy/ai` should export `createAIService()`. The backend calls `processMessage(conversationId, message, context)`, where `context` has the chat history, current draft, customer's name and home address, today's date, and the categories. Return an `AIResponse`. In `extractedData`, `undefined` means don't change the field and `null` means clear it.
-- `@handy/matching` should export `createMatchingService()`. The backend calls `findMatches(request, candidates)` with workers that already have their qualifications, schedules, bookings, and experience loaded. Return `WorkerMatch[]` sorted best first. The top `MATCH_INITIAL_OFFERS` workers get the job first. If their offers expire without anyone accepting, it goes to the next workers, and after `MATCH_EXPAND_AFTER_SECONDS` it goes to everyone else who qualifies.
+- `@handy/ai` should export `createAIService()`. The backend calls `processMessage(conversationId, message, context)`, where `context` has the chat history, current draft, customer's name and home address, today's date, the categories, and `pastWorkers` (people who've helped before, so you can set `preferredWorkerId` when they ask for someone by name). Return an `AIResponse`. In `extractedData`, `undefined` means don't change the field and `null` means clear it.
+- `@handy/matching` should export `createMatchingService()`. The backend calls `findMatches(request, candidates)` with workers that already have their qualifications, schedules, bookings, experience, and `withCustomer` history loaded (workers the customer rated 1–2 stars are already removed). Return `WorkerMatch[]` sorted best first. The top `MATCH_INITIAL_OFFERS` workers get the job first. If their offers expire without anyone accepting, it goes to the next workers, and after `MATCH_EXPAND_AFTER_SECONDS` it goes to everyone else who qualifies.
 
 When they're ready, add `"@handy/ai": "workspace:*"` and `"@handy/matching": "workspace:*"` to `apps/api/package.json` and restart. The startup log says which one is being used.
 

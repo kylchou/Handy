@@ -145,6 +145,8 @@ export interface ServiceRequestDraft {
   requestedEndTime?: string | null;
   urgency?: Urgency | null;
   specialRequirements?: string[] | null;
+  /** A worker the customer wants again ("Can James come back?"). They're asked first. */
+  preferredWorkerId?: string | null;
 }
 
 export interface ConversationDTO {
@@ -175,6 +177,8 @@ export interface ServiceRequestDTO {
   requestedEndTime: string;
   urgency: Urgency;
   specialRequirements: string[];
+  /** Offered to this worker alone first; if they pass, it goes to everyone. */
+  preferredWorkerId: string | null;
   status: ServiceRequestStatus;
   estimatedPriceCents: number;
   platformFeeCents: number;
@@ -356,4 +360,14 @@ export interface CaregiverPersonDTO {
   openRequests: ServiceRequestDTO[];
   /** The 10 most recent requests, newest first. */
   recentHistory: CustomerHistoryItemDTO[];
+}
+
+/** Someone who has helped this customer before, for a "Book James again" button. */
+export interface PastWorkerDTO {
+  worker: WorkerPublicDTO;
+  completedJobs: number;
+  lastJobDate: string;
+  lastServiceCategoryId: ServiceCategoryCode;
+  /** The customer's most recent rating of this worker, if they left one. */
+  yourLastRating: number | null;
 }

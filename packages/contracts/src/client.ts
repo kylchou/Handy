@@ -155,6 +155,8 @@ export function createApiClient(options: ApiClientOptions) {
       getProfile: (): R<"GET /customers/me/profile"> => get("/customers/me/profile"),
       updateProfile: (body: In<typeof updateCustomerProfileSchema>): R<"PUT /customers/me/profile"> => put("/customers/me/profile", body),
       history: (): R<"GET /customers/me/history"> => get("/customers/me/history"),
+      /** People who've helped before, for "Book James again". */
+      pastWorkers: (): R<"GET /customers/me/past-workers"> => get("/customers/me/past-workers"),
       /** A 6-character code to give a family member so they can link as a caregiver. */
       createCaregiverInvite: (): R<"POST /customers/me/caregivers/invite"> => post("/customers/me/caregivers/invite"),
       caregivers: (): R<"GET /customers/me/caregivers"> => get("/customers/me/caregivers"),

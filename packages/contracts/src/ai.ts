@@ -1,4 +1,4 @@
-import type { SafetyStatus } from "./enums";
+import type { SafetyStatus, ServiceCategoryCode } from "./enums";
 import type { ServiceCategoryDTO, ServiceRequestDraft } from "./dto";
 
 /**
@@ -34,6 +34,11 @@ export interface AIConversationContext {
   today: string;
   timezone: string;
   serviceCategories: ServiceCategoryDTO[];
+  /**
+   * People who have helped this customer before, so "Can James come back?"
+   * can set draft.preferredWorkerId. Optional for older AI implementations.
+   */
+  pastWorkers?: Array<{ workerId: string; firstName: string; displayName: string; lastServiceCategoryId: ServiceCategoryCode; yourLastRating: number | null }>;
 }
 
 export interface AIResponse {

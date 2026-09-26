@@ -502,6 +502,112 @@ describe("API client", () => {
     });
   });
 
+  describe("booking someone again", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const offeredTo = async (api: ApiClient, requestId: string) => (await api.jobs.available()).some((o) => o.requestId === requestId);
+    const idOf = async (api: ApiClient) => (await api.auth.me()).user.id;
+
+    async function request(margaret: ApiClient, fields: { serviceCategoryId: "MOVING_ASSISTANCE" | "ERRANDS"; days: number; time: string; preferredWorkerId?: string }) {
+      const { conversation } = await margaret.conversations.create();
+      return (
+        await margaret.requests.create({
+          conversationId: conversation.id,
+          serviceCategoryId: fields.serviceCategoryId,
+          description: "Help around the house",
+          location: "123 Main Street, Atlanta, GA",
+          requestedDate: addDays(todayIn("America/New_York"), fields.days),
+          requestedStartTime: fields.time,
+          preferredWorkerId: fields.preferredWorkerId,
+        })
+      ).request;
+    }
+
+    it("lists past workers and understands 'Can Maria come back?' in the chat", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const maria = await login("maria@handy.demo");
+      const david = await login("david@handy.demo");
+      const mariaId = await idOf(maria);
+
+      const past = await margaret.customers.pastWorkers();
+      expect(past.find((p) => p.worker.firstName === "Maria")).toMatchObject({ yourLastRating: 5, lastServiceCategoryId: "ERRANDS" });
+      expect(past.some((p) => p.worker.firstName === "James")).toBe(true);
+
+      const { conversation } = await margaret.conversations.create();
+      const turn = await margaret.conversations.sendMessage(conversation.id, "Can Maria come back to pick up my groceries tomorrow at 10?");
+      expect(turn.conversation.draft).toMatchObject({ preferredWorkerId: mariaId, serviceCategoryId: "ERRANDS", requestedStartTime: "10:00" });
+      expect(turn.assistantMessage.content).toContain("I'll ask Maria first");
+      const ready = await margaret.conversations.sendMessage(conversation.id, "Yes, at my home");
+      expect(ready.assistantMessage.content).toContain("I'll ask Maria first.");
+
+      const { request: req, notifiedWorkerCount } = await margaret.requests.create({ conversationId: conversation.id });
+      expect(req.preferredWorkerId).toBe(mariaId);
+      expect(notifiedWorkerCount).toBe(1); // only Maria, at first
+      expect(await offeredTo(maria, req.id)).toBe(true);
+      expect(await offeredTo(david, req.id)).toBe(false);
+
+      // Maria can't make it, so it goes to everyone else.
+      const offer = (await maria.jobs.available()).find((o) => o.requestId === req.id)!;
+      await maria.jobs.declineOffer(offer.id);
+      expect(await offeredTo(david, req.id)).toBe(true);
+    });
+
+    it("gives the preferred worker their full window before widening the search", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const tom = await login("tom@handy.demo");
+      const req = await request(margaret, { serviceCategoryId: "MOVING_ASSISTANCE", days: 4, time: "12:00", preferredWorkerId: await idOf(james) });
+
+      expect(await offeredTo(james, req.id)).toBe(true);
+      expect(await server.services.matching.broadcast(req.id)).toBe(0); // e.g. the "widen after 2 minutes" timer
+      expect(await offeredTo(tom, req.id)).toBe(false);
+    });
+
+    it("tells the customer when the helper they asked for isn't available", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const aisha = await login("aisha@handy.demo"); // does tech help, not moving
+      const tom = await login("tom@handy.demo");
+      const req = await request(margaret, { serviceCategoryId: "MOVING_ASSISTANCE", days: 4, time: "15:00", preferredWorkerId: await idOf(aisha) });
+
+      const notes = await margaret.notifications.list();
+      expect(notes.some((n) => n.title === "Aisha isn't available then, so we're asking other helpers too.")).toBe(true);
+      expect(await offeredTo(tom, req.id)).toBe(true);
+      await expect(request(margaret, { serviceCategoryId: "ERRANDS", days: 4, time: "16:00", preferredWorkerId: await idOf(margaret) })).rejects.toMatchObject({ status: 400 });
+    });
+
+    it("never sends someone the customer rated 1 or 2 stars", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const tom = await login("tom@handy.demo");
+      const james = await login("james@handy.demo");
+
+      const first = await request(margaret, { serviceCategoryId: "MOVING_ASSISTANCE", days: 5, time: "09:00" });
+      const offer = (await tom.jobs.available()).find((o) => o.requestId === first.id)!;
+      const job = await tom.jobs.acceptOffer(offer.id);
+      await tom.jobs.updateStatus(job.id, "EN_ROUTE");
+      await tom.jobs.arrive(job.id, (await margaret.jobs.get(job.id)).arrivalCode!);
+      await tom.jobs.updateStatus(job.id, "IN_PROGRESS");
+      await tom.jobs.updateStatus(job.id, "COMPLETED");
+      await margaret.jobs.rate(job.id, { score: 1, comment: "Broke a vase" });
+
+      const next = await request(margaret, { serviceCategoryId: "MOVING_ASSISTANCE", days: 5, time: "15:00" });
+      expect(await offeredTo(james, next.id)).toBe(true);
+      expect(await offeredTo(tom, next.id)).toBe(false);
+
+      // Even asking for him by name in the chat doesn't set him as preferred.
+      const { conversation } = await margaret.conversations.create();
+      const turn = await margaret.conversations.sendMessage(conversation.id, "Can Tom come back tomorrow?");
+      expect(turn.conversation.draft.preferredWorkerId ?? null).toBeNull();
+
+      // "Same person as last time" picks the most recent helper they didn't rate poorly (James, not Tom).
+      const again = await margaret.conversations.create();
+      const same = await margaret.conversations.sendMessage(again.conversation.id, "Can I get the same person as last time to move a chair?");
+      expect(same.conversation.draft.preferredWorkerId).toBe(await idOf(james));
+    });
+  });
+
   it("resets the demo data without logging anyone out", async () => {
     const admin = client();
     const margaret = client();

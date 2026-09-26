@@ -16,6 +16,7 @@ import { requestsRepo } from "../repositories/requests";
 import { customerProfilesRepo, usersRepo } from "../repositories/users";
 import { Notifier, type Actor, type ServiceContext } from "./context";
 import { toCategoryDTO, toConversationDTO, toConversationMessageDTO } from "./mappers";
+import { LOW_RATING, workerHistoryFor } from "./worker-history";
 
 export const GREETING = "Hello! What can we help you with today? You can type or tap the microphone and tell me in your own words.";
 
@@ -76,6 +77,7 @@ export class ConversationService {
           today: todayIn(this.ctx.config.timezone),
           timezone: this.ctx.config.timezone,
           serviceCategories: categories.map(toCategoryDTO),
+          pastWorkers: await this.pastWorkersForAI(actor.id),
         });
       } catch (err) {
         this.ctx.log.error({ err, conversationId: conv.id }, "AI service failed");
@@ -120,6 +122,25 @@ export class ConversationService {
       conversation: toConversationDTO(updated, null),
       emergency: ai.safetyStatus === "POTENTIAL_EMERGENCY" ? EMERGENCY_GUIDANCE : null,
     };
+  }
+
+  /** The customer's past workers (not ones they rated poorly), most recent first. */
+  private async pastWorkersForAI(customerId: string) {
+    const history = await workerHistoryFor(this.ctx, customerId);
+    const users = new Map((await usersRepo.findByIds(this.ctx.db, [...history.keys()])).map((u) => [u.id, u]));
+    return [...history.entries()].flatMap(([workerId, h]) => {
+      const u = users.get(workerId);
+      if (!u || (h.lastRating ?? 5) <= LOW_RATING) return [];
+      return [
+        {
+          workerId,
+          firstName: u.firstName,
+          displayName: `${u.firstName} ${u.lastName.charAt(0)}.`,
+          lastServiceCategoryId: h.lastServiceCategoryId,
+          yourLastRating: h.lastRating,
+        },
+      ];
+    });
   }
 
   /** Loads a conversation the actor may access (its customer, or an admin). */

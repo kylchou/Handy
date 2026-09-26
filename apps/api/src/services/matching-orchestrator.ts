@@ -7,6 +7,7 @@ import { workersRepo } from "../repositories/workers";
 import { formatTime12h } from "../lib/time";
 import { Notifier, type ServiceContext } from "./context";
 import { offerViews, requestView } from "./views";
+import { LOW_RATING, workerHistoryFor } from "./worker-history";
 
 /**
  * Backend side of matching: loads candidates, asks the MatchingService to rank
@@ -24,7 +25,10 @@ export class MatchingOrchestrator {
 
   async buildCandidates(request: ServiceRequestRow, excludeWorkerIds: Set<string>): Promise<WorkerCandidate[]> {
     const { db } = this.ctx;
-    const ids = (await workersRepo.idsQualifiedFor(db, request.serviceCategoryId)).filter((id) => !excludeWorkerIds.has(id));
+    const history = await workerHistoryFor(this.ctx, request.customerId);
+    // Never send someone the customer rated poorly.
+    const ratedLow = (id: string) => (history.get(id)?.lastRating ?? 5) <= LOW_RATING;
+    const ids = (await workersRepo.idsQualifiedFor(db, request.serviceCategoryId)).filter((id) => !excludeWorkerIds.has(id) && !ratedLow(id));
     if (ids.length === 0) return [];
     const [users, profiles, quals, slots, booked, experience] = await Promise.all([
       usersRepo.findByIds(db, ids),
@@ -57,6 +61,10 @@ export class MatchingOrchestrator {
           .filter((s) => s.workerId === p.userId)
           .map((s) => ({ dayOfWeek: s.dayOfWeek, startTime: s.startTime, endTime: s.endTime })),
         bookedWindows: booked.filter((b) => b.workerId === p.userId).map(({ date, startTime, endTime }) => ({ date, startTime, endTime })),
+        withCustomer: {
+          completedJobs: history.get(p.userId)?.completedJobs ?? 0,
+          lastRating: history.get(p.userId)?.lastRating ?? null,
+        },
       };
     });
   }
@@ -84,6 +92,9 @@ export class MatchingOrchestrator {
 
     // Workers who already hold, accepted, declined, or let an offer expire are skipped; withdrawn ones are eligible again.
     const existing = await offersRepo.byRequest(db, requestId);
+    const preferred = request.preferredWorkerId;
+    // Give the preferred worker their full response window before anyone else is asked.
+    if (preferred && existing.some((o) => o.workerId === preferred && o.status === "PENDING")) return 0;
     const skip = new Set(existing.filter((o) => o.status !== "WITHDRAWN").map((o) => o.workerId));
     const candidates = await this.buildCandidates(request, skip);
     let matches;
@@ -94,8 +105,15 @@ export class MatchingOrchestrator {
       return 0;
     }
     const eligible = new Set(candidates.map((c) => c.workerId));
-    const limit = request.matchingRound === 0 ? config.matchInitialOffers : Number.POSITIVE_INFINITY;
-    const chosen = matches.filter((m) => eligible.has(m.workerId)).slice(0, limit);
+    const ranked = matches.filter((m) => eligible.has(m.workerId));
+    // Rounds: [preferred worker alone] → top MATCH_INITIAL_OFFERS → everyone else who qualifies.
+    const firstOpenRound = preferred ? 1 : 0;
+    let chosen = ranked.slice(0, request.matchingRound <= firstOpenRound ? config.matchInitialOffers : Number.POSITIVE_INFINITY);
+    if (preferred && request.matchingRound === 0) {
+      const match = ranked.find((m) => m.workerId === preferred);
+      if (match) chosen = [match];
+      else await this.tellCustomerPreferredUnavailable(request);
+    }
 
     const created = await offersRepo.createMany(
       db,
@@ -145,6 +163,18 @@ export class MatchingOrchestrator {
     }
     if (expired.length) this.ctx.log.info({ expired: expired.length }, "expired unanswered offers");
     return expired.length;
+  }
+
+  private async tellCustomerPreferredUnavailable(request: ServiceRequestRow) {
+    const worker = request.preferredWorkerId ? await usersRepo.findById(this.ctx.db, request.preferredWorkerId) : null;
+    const name = worker?.firstName ?? "The helper you asked for";
+    await this.notifier.notify(
+      request.customerId,
+      "PREFERRED_UNAVAILABLE",
+      `${name} isn't available then, so we're asking other helpers too.`,
+      null,
+      { requestId: request.id },
+    );
   }
 
   /** Re-broadcasts requests that have been searching too long. Called on an interval. */

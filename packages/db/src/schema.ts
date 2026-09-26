@@ -175,6 +175,7 @@ export const serviceRequests = pgTable(
     urgency: text("urgency").$type<Urgency>().notNull().default("NORMAL"),
     specialRequirements: jsonb("special_requirements").$type<string[]>().notNull().default([]),
     status: text("status").$type<ServiceRequestStatus>().notNull().default("SEARCHING"),
+    preferredWorkerId: uuid("preferred_worker_id").references(() => users.id, { onDelete: "set null" }),
     estimatedPriceCents: integer("estimated_price_cents").notNull(),
     platformFeeCents: integer("platform_fee_cents").notNull(),
     /** How many times offers have been broadcast (0 = initial wave). */

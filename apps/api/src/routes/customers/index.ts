@@ -11,4 +11,6 @@ export async function customerRoutes(app: FastifyInstance, { services, guards }:
   );
 
   app.get("/customers/me/history", { preHandler: guards.customer }, async (req) => services.profiles.customerHistory(req.user.id));
+
+  app.get("/customers/me/past-workers", { preHandler: guards.customer }, async (req) => services.profiles.pastWorkers(req.user.id));
 }

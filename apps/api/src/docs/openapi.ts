@@ -53,6 +53,7 @@ const ROUTE_DOCS: Record<keyof ApiResponses, RouteDoc> = {
   "GET /customers/me/profile": { tag: "Customers", summary: "Get my profile", returns: "CustomerProfileDTO", who: "customer" },
   "PUT /customers/me/profile": { tag: "Customers", summary: "Update my profile", returns: "CustomerProfileDTO", who: "customer", body: updateCustomerProfileSchema },
   "GET /customers/me/history": { tag: "Customers", summary: "Everything for the history screen", returns: "CustomerHistoryItemDTO[]", who: "customer" },
+  "GET /customers/me/past-workers": { tag: "Customers", summary: "People who've helped me before", returns: "PastWorkerDTO[]", who: "customer", notes: "For a \"Book James again\" button: pass the worker's id as preferredWorkerId when creating a request." },
 
   "POST /customers/me/caregivers/invite": { tag: "Caregivers", summary: "Make an invite code for a family member", returns: "CaregiverInviteDTO", who: "customer", status: 201, notes: "6 characters, good for 24 hours, works once." },
   "GET /customers/me/caregivers": { tag: "Caregivers", summary: "Who's linked to me", returns: "CaregiverLinkDTO[]", who: "customer" },

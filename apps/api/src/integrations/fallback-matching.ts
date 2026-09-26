@@ -46,7 +46,11 @@ export class FallbackMatchingService implements MatchingService {
         rating: c.ratingCount === 0 ? 70 : (c.rating / 5) * 100,
         experience: Math.min(100, 40 + c.completedJobsInCategory * 15 + c.completedJobs * 0.5),
       };
+      // Someone the customer liked before gets a boost ("Can James come back?").
+      const past = c.withCustomer;
+      const familiarity = past && past.completedJobs > 0 ? ((past.lastRating ?? 0) >= 4 ? 8 : 3) : 0;
       const score =
+        familiarity +
         scores.qualification * MATCH_WEIGHTS.qualification +
         scores.availability * MATCH_WEIGHTS.availability +
         scores.distance * MATCH_WEIGHTS.distance +
@@ -59,10 +63,11 @@ export class FallbackMatchingService implements MatchingService {
       if (qualification.qualificationLevel !== "BASIC") reasons.push("Experienced with this kind of job");
       if (c.ratingCount > 0) reasons.push(`${c.rating.toFixed(1)}-star rating`);
       if (c.completedJobsInCategory > 0) reasons.push(`${c.completedJobsInCategory} similar jobs completed`);
+      if (familiarity) reasons.push("Has helped this customer before");
 
       matches.push({
         workerId: c.workerId,
-        score: Math.round(score * 10) / 10,
+        score: Math.min(100, Math.round(score * 10) / 10),
         distance,
         qualificationMatch: true,
         availabilityMatch: fullyCovered,

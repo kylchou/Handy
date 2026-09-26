@@ -1,6 +1,7 @@
 import type {
   CustomerHistoryItemDTO,
   CustomerProfileDTO,
+  PastWorkerDTO,
   RatingDTO,
   UpdateAvailabilityBody,
   UpdateCustomerProfileBody,
@@ -22,6 +23,7 @@ import { workersRepo } from "../repositories/workers";
 import type { Actor, ServiceContext } from "./context";
 import { toCustomerProfileDTO, toRatingDTO, toUserDTO, toWorkerProfileDTO } from "./mappers";
 import { workerPublicViews } from "./views";
+import { workerHistoryFor } from "./worker-history";
 
 export class ProfileService {
   constructor(private ctx: ServiceContext) {}
@@ -79,6 +81,26 @@ export class ProfileService {
         rating: job ? (ratingByJob.get(job.id) ?? null) : null,
         createdAt: r.createdAt.toISOString(),
       };
+    });
+  }
+
+  /** Workers who've helped this customer, most recent first. */
+  async pastWorkers(customerId: string): Promise<PastWorkerDTO[]> {
+    const history = await workerHistoryFor(this.ctx, customerId);
+    const workers = await workerPublicViews(this.ctx, [...history.keys()]);
+    return [...history.entries()].flatMap(([workerId, h]) => {
+      const worker = workers.get(workerId);
+      return worker
+        ? [
+            {
+              worker,
+              completedJobs: h.completedJobs,
+              lastJobDate: h.lastJobDate.toISOString(),
+              lastServiceCategoryId: h.lastServiceCategoryId,
+              yourLastRating: h.lastRating,
+            },
+          ]
+        : [];
     });
   }
 

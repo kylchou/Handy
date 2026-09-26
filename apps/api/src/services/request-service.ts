@@ -15,7 +15,7 @@ import { conversationsRepo } from "../repositories/conversations";
 import { jobsRepo } from "../repositories/jobs";
 import { offersRepo } from "../repositories/offers";
 import { requestsRepo } from "../repositories/requests";
-import { customerProfilesRepo } from "../repositories/users";
+import { customerProfilesRepo, usersRepo } from "../repositories/users";
 import { Notifier, type Actor, type ServiceContext } from "./context";
 import type { ConversationService } from "./conversation-service";
 import { mergeDraft } from "./conversation-service";
@@ -72,6 +72,10 @@ export class RequestService {
       customerProfilesRepo.get(db, actor.id),
     ]);
     if (!category) throw new ApiError("VALIDATION_FAILED", "Unknown service type.");
+    if (draft.preferredWorkerId) {
+      const preferred = await usersRepo.findById(db, draft.preferredWorkerId);
+      if (preferred?.role !== "WORKER") throw new ApiError("VALIDATION_FAILED", "We couldn't find that helper.");
+    }
 
     // No geocoder yet: the customer's home coordinates stand in for the job site.
     const request = await db.transaction(async (tx) => {
@@ -88,6 +92,7 @@ export class RequestService {
         requestedEndTime: draft.requestedEndTime!,
         urgency: draft.urgency ?? "NORMAL",
         specialRequirements: draft.specialRequirements ?? [],
+        preferredWorkerId: draft.preferredWorkerId ?? null,
         status: "SEARCHING",
         estimatedPriceCents: category.basePriceCents + (draft.urgency === "HIGH" ? HIGH_URGENCY_SURCHARGE_CENTS : 0),
         platformFeeCents: config.platformFeeCents,
