@@ -16,11 +16,12 @@ export default function BigButton({
   ...rest
 }: BigButtonProps) {
   const base =
-    "rounded-control px-6 py-4 text-xl font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+    "rounded-control px-6 py-4 text-xl font-bold transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100";
   const variants: Record<string, string> = {
-    primary: "bg-accent text-white hover:bg-accent-dark",
-    secondary: "bg-white text-ink border-2 border-line hover:border-accent",
-    danger: "bg-danger text-white hover:bg-danger",
+    primary: "bg-accent text-white shadow-card hover:bg-accent-dark",
+    secondary:
+      "bg-white text-ink border-2 border-line hover:border-accent hover:bg-accent-light/40",
+    danger: "bg-danger text-white shadow-card hover:opacity-90",
   };
   return (
     <button

@@ -41,3 +41,19 @@ button,
 a.tap-target {
   min-height: 48px;
 }
+
+/* Driven by the toggles on /settings (see app/(app)/layout.tsx), persisted
+   in localStorage as "pref_large_text" / "pref_high_contrast". Kept as a
+   couple of small overrides rather than a second theme file. */
+html.pref-large-text {
+  font-size: 118%;
+}
+html.pref-high-contrast body {
+  background-color: #ffffff;
+}
+html.pref-high-contrast :is(.text-ink-soft) {
+  color: #1e2a30 !important;
+}
+html.pref-high-contrast :is(.border-line) {
+  border-color: #1e2a30 !important;
+}

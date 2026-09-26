@@ -19,7 +19,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-paper text-ink">{children}</body>
+      <body className="min-h-screen bg-warm-fade text-ink">{children}</body>
     </html>
   );
 }
