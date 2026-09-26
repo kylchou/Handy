@@ -58,6 +58,7 @@ export type ApiErrorCode =
   | "TOO_MANY_ATTEMPTS"
   | "INVALID_INVITE"
   | "RATE_LIMITED"
+  | "SENSITIVE_INFO"
   | "INTERNAL_ERROR";
 
 /** Body of every non-2xx response. */

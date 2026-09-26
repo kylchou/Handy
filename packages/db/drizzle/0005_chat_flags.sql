@@ -1,0 +1,1 @@
+ALTER TABLE "job_messages" ADD COLUMN "flags" jsonb DEFAULT '[]'::jsonb NOT NULL;

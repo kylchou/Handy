@@ -261,6 +261,8 @@ export const jobMessages = pgTable(
       .notNull()
       .references(() => users.id),
     content: text("content").notNull(),
+    /** Scam signals found in the message (e.g. OFF_PLATFORM_PAYMENT), if any. */
+    flags: jsonb("flags").$type<string[]>().notNull().default([]),
     createdAt: createdAt(),
   },
   (t) => [index("job_messages_job_idx").on(t.jobId, t.createdAt)],

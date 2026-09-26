@@ -31,6 +31,7 @@ import type {
   WorkerPublicDTO,
 } from "@handy/contracts";
 import { approximateLocation } from "../lib/geo";
+import { SCAM_WARNINGS, type ScamSignal } from "../lib/scam";
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
 
@@ -224,6 +225,8 @@ export function toJobMessageDTO(m: JobMessageRow, sender: UserRow | undefined): 
     senderRole: sender?.role ?? "CUSTOMER",
     senderName: sender ? `${sender.firstName} ${sender.lastName.charAt(0)}.` : "Unknown",
     content: m.content,
+    flags: m.flags,
+    warning: m.flags.length ? m.flags.map((f) => SCAM_WARNINGS[f as ScamSignal] ?? "").filter(Boolean).join(" ") : null,
     createdAt: m.createdAt.toISOString(),
   };
 }

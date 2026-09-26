@@ -255,6 +255,10 @@ export interface JobMessageDTO {
   senderRole: UserRole;
   senderName: string;
   content: string;
+  /** Scam signals found in a worker's message: OFF_PLATFORM_PAYMENT, GIFT_CARDS, SENSITIVE_INFO. */
+  flags: string[];
+  /** Plain-language warning to show under the message when it's flagged, otherwise null. */
+  warning: string | null;
   createdAt: string;
 }
 
