@@ -38,6 +38,7 @@ A few things to know:
 - Any error throws an `ApiRequestError` with `status`, `code`, and `message`. If the server can't be reached you get `code: "NETWORK_ERROR"` and `status: 0`.
 - `realtime.subscribe` uses SSE by default. Pass `{ transport: "ws" }` for WebSocket. Either way it reconnects by itself and catches up on anything it missed. Pass `onResync` to refetch your screen in the rare case it can't catch up.
 - The method names follow the endpoint tables below, e.g. `api.requests.cancel(id)` is `POST /requests/:id/cancel`.
+- `api.jobs.updateStatus(jobId, status, { reason?, arrivalCode? })` takes options as the last argument, and `api.jobs.arrive(jobId, code)` is a shortcut for arriving.
 
 ## Basics
 
@@ -106,8 +107,8 @@ Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`, or `EXP
 | `POST /jobs/offers/:offerId/accept` | worker | First to accept gets it. Anyone after that gets 409 `JOB_NO_LONGER_AVAILABLE`. If the worker already has a job at an overlapping time it's 409 `SCHEDULE_CONFLICT`. Accepting also removes the worker's other offers that overlap with it. |
 | `POST /jobs/offers/:offerId/decline` | worker | |
 | `GET /jobs` | logged in | Your jobs (admins get all). Optional `?status=`. |
-| `GET /jobs/:jobId` | job's customer/worker, admin | Job + request + worker profile + customer name + distance + rating |
-| `PATCH /jobs/:jobId/status` | see below | `{ status, reason? }` |
+| `GET /jobs/:jobId` | job's customer/worker, admin | Job + request + worker profile + customer name + distance + rating + `arrivalCode` (customer and admin only, always null for the worker) |
+| `PATCH /jobs/:jobId/status` | see below | `{ status, reason?, arrivalCode? }` |
 | `GET /jobs/:jobId/messages` | job's customer/worker, admin | |
 | `POST /jobs/:jobId/messages` | job's customer/worker | `{ content }`. Closed after the job is done or cancelled. |
 | `POST /jobs/:jobId/rating` | job's customer | `{ score: 1-5, comment? }`. Once per job, after it's completed. |
@@ -123,6 +124,13 @@ ACCEPTED ─► EN_ROUTE ─► ARRIVED ─► IN_PROGRESS ─► COMPLETED     
 - Customer can cancel while `ACCEPTED` or `EN_ROUTE`.
 - Worker or admin can cancel any time before `IN_PROGRESS`.
 - If the worker cancels, the request goes back to `SEARCHING` and gets sent to other workers.
+
+**Arrival code.** When a worker accepts, the customer gets a 4-digit `arrivalCode`. It's on their job and in the "James is helping you" notification. When the worker gets there, the customer reads it to them, and the worker has to send it to mark the job `ARRIVED` (`{ status: "ARRIVED", arrivalCode: "4821" }`, or `api.jobs.arrive(jobId, code)`). This proves the right person is at the door.
+
+- Wrong or missing code: 400 `INVALID_ARRIVAL_CODE`.
+- 5 wrong tries: 429 `TOO_MANY_ATTEMPTS`, and the worker can't mark that job arrived anymore. An admin can still do it without the code.
+
+Darsh: show the code big on the job screen once someone accepts. Arjun: the "I've Arrived" button needs a 4-digit input.
 
 Helpers in contracts: `canTransitionJob()` checks if a change is allowed, `nextWorkerJobStatus()` gives the next step for the worker's button, and `JOB_STATUS_LABELS` has display text for each status.
 

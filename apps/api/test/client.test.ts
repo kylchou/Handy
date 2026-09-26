@@ -59,9 +59,12 @@ describe("API client", () => {
 
     const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
     const job = await james.jobs.acceptOffer(offer.id);
-    for (const status of ["EN_ROUTE", "ARRIVED", "IN_PROGRESS", "COMPLETED"] as const) {
-      await james.jobs.updateStatus(job.id, status);
-    }
+    expect(job.arrivalCode).toBeNull();
+    const { arrivalCode } = await margaret.jobs.get(job.id);
+    await james.jobs.updateStatus(job.id, "EN_ROUTE");
+    await james.jobs.arrive(job.id, arrivalCode!);
+    await james.jobs.updateStatus(job.id, "IN_PROGRESS");
+    await james.jobs.updateStatus(job.id, "COMPLETED");
     const rating = await margaret.jobs.rate(job.id, { score: 5, comment: "Great" });
     expect(rating.score).toBe(5);
     expect((await margaret.customers.history()).find((h) => h.requestId === request.id)?.rating).toBe(5);

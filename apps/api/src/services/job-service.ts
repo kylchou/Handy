@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import {
   canTransitionJob,
   type CreateRatingBody,
@@ -35,6 +36,8 @@ const STATUS_TIMESTAMP: Partial<Record<JobStatus, keyof JobRow>> = {
   COMPLETED: "completedAt",
   CANCELLED: "cancelledAt",
 };
+
+const MAX_ARRIVAL_CODE_ATTEMPTS = 5;
 
 function isUniqueViolation(err: unknown): boolean {
   const e = err as { code?: string; cause?: { code?: string } };
@@ -86,7 +89,13 @@ export class JobService {
         }
 
         const now = new Date();
-        const job = await jobsRepo.create(tx, { requestId: request.id, workerId: actor.id, status: "ACCEPTED", acceptedAt: now });
+        const job = await jobsRepo.create(tx, {
+          requestId: request.id,
+          workerId: actor.id,
+          status: "ACCEPTED",
+          acceptedAt: now,
+          arrivalCode: String(randomInt(0, 10_000)).padStart(4, "0"),
+        });
         await offersRepo.update(tx, offerId, { status: "ACCEPTED", respondedAt: now });
         const withdrawn = await offersRepo.withdrawPending(tx, request.id, offerId);
         const updated = await requestsRepo.update(tx, request.id, { status: "MATCHED" });
@@ -101,7 +110,7 @@ export class JobService {
     }
 
     const { job, request, withdrawn, ownConflicts } = result;
-    const detail = await jobDetail(this.ctx, job);
+    const detail = await jobDetail(this.ctx, job, actor);
     for (const o of withdrawn) this.notifier.emit([o.workerId], "JOB_NO_LONGER_AVAILABLE", { requestId: request.id, offerId: o.id });
     for (const o of ownConflicts) {
       this.notifier.emit([actor.id], "JOB_NO_LONGER_AVAILABLE", { requestId: o.requestId, offerId: o.id });
@@ -119,7 +128,8 @@ export class JobService {
       request.customerId,
       "JOB_ACCEPTED",
       `${detail.worker.firstName} is helping you ${this.friendlyWhen(request)}.`,
-      `${detail.worker.displayName} · ${detail.worker.rating.toFixed(1)} stars · ${detail.worker.completedJobs} completed jobs`,
+      `${detail.worker.displayName} · ${detail.worker.rating.toFixed(1)} stars · ${detail.worker.completedJobs} completed jobs. ` +
+        `Your arrival code is ${job.arrivalCode}. Only tell it to ${detail.worker.firstName} once they're at your door.`,
       { jobId: job.id, requestId: request.id },
     );
     return detail;
@@ -141,17 +151,25 @@ export class JobService {
   async list(actor: Actor, status?: JobStatus): Promise<JobDetailDTO[]> {
     const filter =
       actor.role === "WORKER" ? { workerId: actor.id, status } : actor.role === "CUSTOMER" ? { customerId: actor.id, status } : { status };
-    return jobDetails(this.ctx, await jobsRepo.list(this.ctx.db, filter));
+    return jobDetails(this.ctx, await jobsRepo.list(this.ctx.db, filter), actor);
   }
 
   async get(actor: Actor, jobId: string): Promise<JobDetailDTO> {
     const { job } = await this.load(actor, jobId);
-    return jobDetail(this.ctx, job);
+    return jobDetail(this.ctx, job, actor);
   }
 
-  async updateStatus(actor: Actor, jobId: string, to: JobStatus, reason?: string): Promise<JobDetailDTO> {
+  async updateStatus(
+    actor: Actor,
+    jobId: string,
+    to: JobStatus,
+    opts: { reason?: string; arrivalCode?: string } = {},
+  ): Promise<JobDetailDTO> {
     const { db } = this.ctx;
+    const { reason } = opts;
     await this.load(actor, jobId);
+    // Workers prove they're at the right door with the customer's code. Admins can skip it.
+    if (to === "ARRIVED" && actor.role === "WORKER") await this.checkArrivalCode(jobId, opts.arrivalCode);
 
     const { job, request } = await db.transaction(async (tx) => {
       const current = await jobsRepo.getForUpdate(tx, jobId);
@@ -189,7 +207,27 @@ export class JobService {
 
     await this.announceStatus(actor, job, request);
     if (to === "CANCELLED" && request.status === "SEARCHING") await this.matching.broadcast(request.id);
-    return jobDetail(this.ctx, job);
+    return jobDetail(this.ctx, job, actor);
+  }
+
+  /**
+   * Checks the code in its own transaction so a wrong guess is counted even
+   * though the request fails. Five wrong guesses locks arriving for that job.
+   */
+  private async checkArrivalCode(jobId: string, code: string | undefined): Promise<void> {
+    if (!code) throw new ApiError("INVALID_ARRIVAL_CODE", "Please enter the 4-digit code the customer gives you at the door.");
+    const outcome = await this.ctx.db.transaction(async (tx) => {
+      const job = await jobsRepo.getForUpdate(tx, jobId);
+      if (!job || job.status !== "EN_ROUTE" || !job.arrivalCode) return "skip" as const; // the transition check reports this
+      if (job.arrivalCodeAttempts >= MAX_ARRIVAL_CODE_ATTEMPTS) return "locked" as const;
+      if (code === job.arrivalCode) return "ok" as const;
+      await jobsRepo.update(tx, jobId, { arrivalCodeAttempts: job.arrivalCodeAttempts + 1 });
+      return job.arrivalCodeAttempts + 1 >= MAX_ARRIVAL_CODE_ATTEMPTS ? ("locked" as const) : ("wrong" as const);
+    });
+    if (outcome === "wrong") throw new ApiError("INVALID_ARRIVAL_CODE", "That code doesn't match. Please ask the customer to read it again.");
+    if (outcome === "locked") {
+      throw new ApiError("TOO_MANY_ATTEMPTS", "Too many wrong codes for this job. Please contact support so we can check in with the customer.");
+    }
   }
 
   private async announceStatus(actor: Actor, job: JobRow, request: ServiceRequestRow) {

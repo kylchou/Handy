@@ -5,18 +5,15 @@ import {
   type AdminCustomerDTO,
   type AdminStatsDTO,
   type AdminWorkerDTO,
-  type JobDetailDTO,
   type VerificationStatus,
   type WorkerProfileDTO,
 } from "@handy/contracts";
 import { forbidden, notFound } from "../lib/errors";
 import { todayIn } from "../lib/time";
-import { jobsRepo } from "../repositories/jobs";
 import { customerProfilesRepo, usersRepo } from "../repositories/users";
 import { workersRepo } from "../repositories/workers";
 import type { ServiceContext } from "./context";
 import { toCustomerProfileDTO, toUserDTO, toWorkerProfileDTO } from "./mappers";
-import { jobDetails } from "./views";
 
 export class AdminService {
   constructor(private ctx: ServiceContext) {}
@@ -44,10 +41,6 @@ export class AdminService {
       totalCustomers,
       totalWorkers,
     };
-  }
-
-  async jobs(): Promise<JobDetailDTO[]> {
-    return jobDetails(this.ctx, await jobsRepo.list(this.ctx.db));
   }
 
   async workers(): Promise<AdminWorkerDTO[]> {

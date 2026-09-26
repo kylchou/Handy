@@ -213,6 +213,12 @@ export interface JobDetailDTO extends JobDTO {
   /** Worker → customer distance in miles, when coordinates are known. */
   distanceMiles: number | null;
   rating: RatingDTO | null;
+  /**
+   * 4-digit code the customer reads to the worker at the door. The worker has
+   * to enter it to mark the job ARRIVED. Only sent to the customer and admins;
+   * always null for the worker.
+   */
+  arrivalCode: string | null;
 }
 
 /** An open job shown on a worker's "Available Jobs Near You" list. */

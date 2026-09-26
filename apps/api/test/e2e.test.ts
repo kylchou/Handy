@@ -188,8 +188,25 @@ describe("end-to-end demo flow", () => {
     expect(msgs.body.map((m) => m.senderName)).toEqual(["Margaret T.", "James R."]);
     expect((await call("GET", `/jobs/${jobId}/messages`, "tom")).status).toBe(403);
 
-    for (const status of ["EN_ROUTE", "ARRIVED", "IN_PROGRESS", "COMPLETED"]) {
-      const res = await call<JobDetailDTO>("PATCH", `/jobs/${jobId}/status`, "james", { status });
+    // Only Margaret can see the arrival code.
+    const code = (await call<JobDetailDTO>("GET", `/jobs/${jobId}`, "margaret")).body.arrivalCode!;
+    expect(code).toMatch(/^\d{4}$/);
+    expect((await call<JobDetailDTO>("GET", `/jobs/${jobId}`, "james")).body.arrivalCode).toBeNull();
+    expect((await call<JobDetailDTO[]>("GET", "/jobs", "james")).body.every((j) => j.arrivalCode === null)).toBe(true);
+    expect((await call<JobDetailDTO>("GET", `/jobs/${jobId}`, "admin")).body.arrivalCode).toBe(code);
+    const notes = await call<Array<{ body: string | null }>>("GET", "/notifications", "margaret");
+    expect(notes.body.some((n) => n.body?.includes(`Your arrival code is ${code}`))).toBe(true);
+
+    expect((await call("PATCH", `/jobs/${jobId}/status`, "james", { status: "EN_ROUTE" })).status).toBe(200);
+    const noCode = await call<{ error: { code: string } }>("PATCH", `/jobs/${jobId}/status`, "james", { status: "ARRIVED" });
+    expect(noCode.body.error.code).toBe("INVALID_ARRIVAL_CODE");
+    const wrong = code === "0000" ? "1111" : "0000";
+    const bad = await call<{ error: { code: string } }>("PATCH", `/jobs/${jobId}/status`, "james", { status: "ARRIVED", arrivalCode: wrong });
+    expect(bad.status).toBe(400);
+    expect(bad.body.error.code).toBe("INVALID_ARRIVAL_CODE");
+
+    for (const [status, extra] of [["ARRIVED", { arrivalCode: code }], ["IN_PROGRESS", {}], ["COMPLETED", {}]] as const) {
+      const res = await call<JobDetailDTO>("PATCH", `/jobs/${jobId}/status`, "james", { status, ...extra });
       expect(res.status).toBe(200);
       expect(res.body.status).toBe(status);
     }
@@ -325,6 +342,36 @@ describe("safety and re-matching", () => {
     const conflict = await call<{ error: { code: string } }>("POST", `/jobs/offers/${sneaky!.id}/accept`, "james");
     expect(conflict.status).toBe(409);
     expect(conflict.body.error.code).toBe("SCHEDULE_CONFLICT");
+  });
+
+  it("locks arriving after too many wrong arrival codes", async () => {
+    const conv = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    const submitted = await call<CreateServiceRequestResponse>("POST", "/requests", "margaret", {
+      conversationId: conv.id,
+      serviceCategoryId: "ERRANDS",
+      description: "Return a package",
+      location: "123 Main Street, Atlanta, GA",
+      requestedDate: addDays(todayIn("America/New_York"), 1),
+      requestedStartTime: "09:00",
+    });
+    const requestId = submitted.body.request.id;
+    const offer = (await call<JobOfferDTO[]>("GET", "/jobs/available", "maria")).body.find((o) => o.requestId === requestId)!;
+    const job = (await call<JobDetailDTO>("POST", `/jobs/offers/${offer.id}/accept`, "maria")).body;
+    const code = (await call<JobDetailDTO>("GET", `/jobs/${job.id}`, "margaret")).body.arrivalCode!;
+    const wrong = code === "0000" ? "1111" : "0000";
+    await call("PATCH", `/jobs/${job.id}/status`, "maria", { status: "EN_ROUTE" });
+
+    const codes: string[] = [];
+    for (let i = 0; i < 5; i++) {
+      codes.push((await call<{ error: { code: string } }>("PATCH", `/jobs/${job.id}/status`, "maria", { status: "ARRIVED", arrivalCode: wrong })).body.error.code);
+    }
+    expect(codes).toEqual(["INVALID_ARRIVAL_CODE", "INVALID_ARRIVAL_CODE", "INVALID_ARRIVAL_CODE", "INVALID_ARRIVAL_CODE", "TOO_MANY_ATTEMPTS"]);
+
+    // Even the right code is refused now, but an admin can still mark it arrived.
+    const locked = await call("PATCH", `/jobs/${job.id}/status`, "maria", { status: "ARRIVED", arrivalCode: code });
+    expect(locked.status).toBe(429);
+    const byAdmin = await call<JobDetailDTO>("PATCH", `/jobs/${job.id}/status`, "admin", { status: "ARRIVED" });
+    expect(byAdmin.body.status).toBe("ARRIVED");
   });
 
   it("expires offers nobody answers and passes the job to the next worker", async () => {

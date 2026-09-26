@@ -189,8 +189,11 @@ export function createApiClient(options: ApiClientOptions) {
       declineOffer: (offerId: string): R<"POST /jobs/offers/:offerId/decline"> => post(`/jobs/offers/${id(offerId)}/decline`),
       list: (status?: JobStatus): R<"GET /jobs"> => get("/jobs", { status }),
       get: (jobId: string): R<"GET /jobs/:jobId"> => get(`/jobs/${id(jobId)}`),
-      updateStatus: (jobId: string, status: JobStatus, reason?: string): R<"PATCH /jobs/:jobId/status"> =>
-        patch(`/jobs/${id(jobId)}/status`, { status, reason }),
+      updateStatus: (jobId: string, status: JobStatus, opts: { reason?: string; arrivalCode?: string } = {}): R<"PATCH /jobs/:jobId/status"> =>
+        patch(`/jobs/${id(jobId)}/status`, { status, ...opts }),
+      /** "I've Arrived", with the 4-digit code the customer reads out. */
+      arrive: (jobId: string, arrivalCode: string): R<"PATCH /jobs/:jobId/status"> =>
+        patch(`/jobs/${id(jobId)}/status`, { status: "ARRIVED", arrivalCode }),
       messages: (jobId: string): R<"GET /jobs/:jobId/messages"> => get(`/jobs/${id(jobId)}/messages`),
       sendMessage: (jobId: string, content: string): R<"POST /jobs/:jobId/messages"> => post(`/jobs/${id(jobId)}/messages`, { content }),
       rate: (jobId: string, body: In<typeof createRatingSchema>): R<"POST /jobs/:jobId/rating"> => post(`/jobs/${id(jobId)}/rating`, body),

@@ -51,6 +51,8 @@ export type ApiErrorCode =
   | "POTENTIAL_EMERGENCY"
   | "JOB_NO_LONGER_AVAILABLE"
   | "SCHEDULE_CONFLICT"
+  | "INVALID_ARRIVAL_CODE"
+  | "TOO_MANY_ATTEMPTS"
   | "INTERNAL_ERROR";
 
 /** Body of every non-2xx response. */
@@ -258,6 +260,8 @@ export interface RequestMatchesResponse {
 export const updateJobStatusSchema = z.object({
   status: z.enum(JOB_STATUSES),
   reason: z.string().max(500).optional(),
+  /** Required when a worker moves the job to ARRIVED. */
+  arrivalCode: z.string().regex(/^\d{4}$/, "The code is 4 digits").optional(),
 });
 export type UpdateJobStatusBody = z.infer<typeof updateJobStatusSchema>;
 

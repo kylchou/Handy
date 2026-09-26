@@ -230,6 +230,9 @@ export const jobs = pgTable(
     completedAt: ts("completed_at"),
     cancelledAt: ts("cancelled_at"),
     cancelReason: text("cancel_reason"),
+    /** 4-digit code the customer reads to the worker at the door. Only the customer sees it. */
+    arrivalCode: text("arrival_code"),
+    arrivalCodeAttempts: integer("arrival_code_attempts").notNull().default(0),
     finalPriceCents: integer("final_price_cents"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

@@ -8,7 +8,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 2. The AI figures out the type of job, date, time, and location, and asks for anything missing.
 3. The customer confirms, and the job gets sent to the best nearby workers who are qualified, verified, and free at that time.
 4. The first worker to accept gets it. Everyone else's offer goes away.
-5. The worker updates the status (on the way, arrived, started, done) and the customer sees it live.
+5. The worker updates the status (on the way, arrived, started, done) and the customer sees it live. To mark "arrived," the worker has to enter a code the customer reads to them at the door.
 6. The customer rates the worker when it's done.
 
 ## What the backend handles
@@ -17,6 +17,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Matching workers by qualifications, schedule, distance, rating, and experience
 - Only verified workers get jobs
 - Workers can't accept two jobs at the same time
+- Arrival code: the customer gets a 4-digit code and the worker has to enter it to mark that they've arrived, so the customer knows the right person is at the door
 - Offers expire after 5 minutes if the worker doesn't respond, and the job goes to the next person
 - If nobody takes a request before its time passes, it's closed and the customer is asked to pick another time
 - If a worker cancels, the job goes back out to other workers
