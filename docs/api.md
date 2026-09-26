@@ -1,6 +1,6 @@
 # API docs
 
-Base URL is `http://localhost:4000/api/v1`. All the types mentioned here come from `@handy/contracts`. If you want the exact response type for an endpoint, check `ApiResponses` in [packages/contracts/src/api.ts](../packages/contracts/src/api.ts).
+Base URL is `http://localhost:4000/api/v1`. When the API is running you can also open **http://localhost:4000/docs** to see every endpoint and try them in the browser: log in with `POST /auth/login`, copy the token, and click Authorize. All the types mentioned here come from `@handy/contracts`. If you want the exact response type for an endpoint, check `ApiResponses` in [packages/contracts/src/api.ts](../packages/contracts/src/api.ts).
 
 ## Using the API client
 
@@ -47,6 +47,17 @@ A few things to know:
 - **Dates/times:** dates are `YYYY-MM-DD`, times are 24h `HH:mm`, in `APP_TIMEZONE` (Eastern by default). Timestamps are ISO strings.
 - **Money:** in cents, so `3500` = $35.00.
 - **Validation:** request bodies are checked with the zod schemas in `@handy/contracts`. You can use the same schemas for your forms.
+- **Rate limits:** a few endpoints are limited. Going over gets a 429 `RATE_LIMITED` with a `Retry-After` header and `details.retryAfterSeconds`.
+
+  | Endpoint | Limit |
+  | --- | --- |
+  | `POST /auth/login` | 10 tries per 15 min, per IP + email |
+  | `POST /auth/signup` | 10 per hour, per IP |
+  | `POST /ai/conversations/:id/messages` | 20 per minute, per user |
+  | `POST /ai/conversations` | 30 per hour, per user |
+  | `POST /caregivers/me/links` | 10 per 15 min, per user |
+
+  Set `RATE_LIMIT_ENABLED=false` in `.env` if they get in your way while testing locally.
 
 ## Roles
 
@@ -176,6 +187,13 @@ Caregivers never see the arrival code, and they can't use `/jobs`, `/requests`, 
 ### Notifications
 
 Saved messages like "James is on the way." so they're still there after a refresh.
+
+**Reminders** (type `JOB_REMINDER`) go out automatically for accepted jobs:
+
+- About a day before: the customer gets "Reminder: James is coming tomorrow at 10 AM." with their arrival code, the worker gets "Reminder: Moving help for Margaret T. tomorrow at 10 AM." with the address, and caregivers get one too.
+- About an hour before: the customer gets "James is coming in about an hour." and the worker gets a heads up. Caregivers don't get this one.
+
+Each reminder only goes out once. It's skipped if the worker accepted after that point, since the "James is helping you" notification already covered it.
 
 | Endpoint | Notes |
 | --- | --- |

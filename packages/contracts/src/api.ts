@@ -57,6 +57,7 @@ export type ApiErrorCode =
   | "INVALID_ARRIVAL_CODE"
   | "TOO_MANY_ATTEMPTS"
   | "INVALID_INVITE"
+  | "RATE_LIMITED"
   | "INTERNAL_ERROR";
 
 /** Body of every non-2xx response. */
@@ -310,6 +311,7 @@ export type UpdateVerificationBody = z.infer<typeof updateVerificationSchema>;
 export interface ApiResponses {
   "POST /auth/signup": AuthResponse;
   "POST /auth/login": AuthResponse;
+  "POST /auth/logout": void;
   "GET /auth/me": MeResponse;
   "PATCH /users/me": UserDTO;
   "GET /service-categories": ServiceCategoryDTO[];

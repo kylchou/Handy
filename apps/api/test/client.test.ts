@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ApiRequestError, createApiClient, type ApiClient, type RealtimeEvent } from "@handy/contracts";
-import { createDb, DEMO_PASSWORD, seed, type DbHandle } from "@handy/db";
+import { eq } from "drizzle-orm";
+import { DEMO_PASSWORD, jobs, type DbHandle } from "@handy/db";
 import { buildApp, type App } from "../src/app";
 import { loadConfig } from "../src/config";
-import { addDays, todayIn } from "../src/lib/time";
+import { createTestDb } from "./helpers";
+import { addDays, todayIn, zonedDateTimeToDate } from "../src/lib/time";
 
 let server: App;
 let handle: DbHandle;
@@ -12,11 +14,9 @@ let baseUrl: string;
 const client = (): ApiClient => createApiClient({ baseUrl });
 
 beforeAll(async () => {
-  handle = await createDb("pglite://memory");
-  await handle.migrate();
-  await seed(handle.db, () => {});
+  handle = await createTestDb();
   server = await buildApp({
-    config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "" }),
+    config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false }),
     dbHandle: handle,
     logger: false,
     backgroundJobs: false,
@@ -316,6 +316,77 @@ describe("API client", () => {
     });
   });
 
+  describe("reminders", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const reminders = async (api: ApiClient) => (await api.notifications.list()).filter((n) => n.type === "JOB_REMINDER");
+
+    async function bookJames(margaret: ApiClient, james: ApiClient, date: string, time: string) {
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "MOVING_ASSISTANCE",
+        description: "Move a dresser",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: date,
+        requestedStartTime: time,
+      });
+      const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+      return james.jobs.acceptOffer(offer.id);
+    }
+
+    it("reminds everyone the day before and an hour before, once each", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const date = addDays(todayIn("America/New_York"), 2);
+      const job = await bookJames(margaret, james, date, "10:00");
+      const code = (await margaret.jobs.get(job.id)).arrivalCode;
+      const start = zonedDateTimeToDate(date, "10:00", "America/New_York").getTime();
+      const at = (ms: number) => server.services.jobs.sendReminders(new Date(start - ms));
+      const HOUR = 60 * 60 * 1000;
+
+      expect(await at(30 * HOUR)).toBe(0); // too early
+
+      expect(await at(23 * HOUR)).toBe(1);
+      expect((await reminders(margaret))[0]).toMatchObject({
+        title: "Reminder: James is coming tomorrow at 10 AM.",
+        body: `Moving help: Move a dresser. Your arrival code is ${code}.`,
+      });
+      expect((await reminders(james))[0]!.title).toBe("Reminder: Moving help for Margaret T. tomorrow at 10 AM.");
+      expect((await reminders(susan))[0]!.title).toBe("James is helping Margaret tomorrow at 10 AM.");
+
+      expect(await at(22 * HOUR)).toBe(0); // no repeats
+
+      expect(await at(50 * 60 * 1000)).toBe(1);
+      expect((await reminders(margaret))[0]!.title).toBe("James is coming in about an hour.");
+      expect((await reminders(james))[0]!.title).toBe("Your moving help job for Margaret T. starts in about an hour.");
+      expect(await reminders(susan)).toHaveLength(1); // caregivers only get the day-before one
+      expect(await reminders(margaret)).toHaveLength(2);
+    });
+
+    it("skips a reminder the acceptance already covered", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const date = addDays(todayIn("America/New_York"), 2);
+      const job = await bookJames(margaret, james, date, "14:00");
+      const start = zonedDateTimeToDate(date, "14:00", "America/New_York").getTime();
+
+      // Pretend James only accepted 30 minutes before the job.
+      await handle.db.update(jobs).set({ acceptedAt: new Date(start - 30 * 60 * 1000) }).where(eq(jobs.id, job.id));
+      const before = (await reminders(margaret)).length;
+      expect(await server.services.jobs.sendReminders(new Date(start - 20 * 60 * 1000))).toBe(0);
+      expect(await reminders(margaret)).toHaveLength(before);
+
+      const [row] = await handle.db.select().from(jobs).where(eq(jobs.id, job.id));
+      expect(row!.dayReminderSentAt).not.toBeNull();
+      expect(row!.hourReminderSentAt).not.toBeNull();
+    });
+  });
+
   it("resets the demo data without logging anyone out", async () => {
     const admin = client();
     const margaret = client();
@@ -358,7 +429,7 @@ describe("API client", () => {
 
   it("refuses to reset when demo reset is turned off", async () => {
     const locked = await buildApp({
-      config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", allowDemoReset: false }),
+      config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false, allowDemoReset: false }),
       dbHandle: handle,
       logger: false,
       backgroundJobs: false,

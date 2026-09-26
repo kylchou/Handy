@@ -22,6 +22,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - If nobody takes a request before its time passes, it's closed and the customer is asked to pick another time
 - If a worker cancels, the job goes back out to other workers
 - Anything that sounds like an emergency is blocked and the user is told to call 911
+- Reminders the day before and an hour before each job, for both the customer and the worker
 - Workers only see a general area until they accept, then they get the full address
 - Customer and worker chat, so nobody has to share phone numbers
 - Caregiver mode: family members can link to someone with an invite code, see their jobs, and get updates when a worker arrives or finishes. They also get alerted if the person describes an emergency to the AI.
@@ -29,6 +30,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Ratings, job history, worker earnings, and admin stats
 - A typed API client in `@handy/contracts` for the frontends
 - A demo reset so we can start the demo fresh for each judge
+- Rate limits on login, signup, and the AI chat, so nobody can brute force passwords or run up our AI bill
 
 ## Setup
 
@@ -40,7 +42,7 @@ cp .env.example .env
 pnpm dev:api
 ```
 
-The API runs on http://localhost:4000.
+The API runs on http://localhost:4000, and you can try every endpoint in the browser at http://localhost:4000/docs.
 
 You don't need to install Postgres. By default it uses PGlite, which is basically Postgres running inside Node, and it saves to a `.data/` folder. The first time you start the API it creates the tables and adds demo data. If you want to use a real Postgres database instead, change `DATABASE_URL` in `.env`.
 
@@ -76,9 +78,11 @@ pnpm db:generate    # make a new migration after changing packages/db/src/schema
 pnpm db:reset       # wipe the database and reseed it
 ```
 
+Every push to `main` and every PR runs typecheck and the tests on GitHub (once with the embedded database and once with a real Postgres). It also fails if someone changes `packages/db/src/schema.ts` without running `pnpm db:generate`. If your PR goes red, click into the check to see what broke.
+
 ## Notes
 
-- All the endpoints and live events are documented in [docs/api.md](docs/api.md).
+- All the endpoints and live events are documented in [docs/api.md](docs/api.md), and there are interactive docs at `/docs` while the API is running.
 - Between demo runs, log in as admin and call `POST /api/v1/admin/demo/reset` (or `api.admin.resetDemo()`) to put everything back to the starting data without logging anyone out. Arjun, this would be a good button on the admin dashboard.
 - Use `createApiClient` from `@handy/contracts` to call the backend instead of writing fetch calls (see the top of [docs/api.md](docs/api.md)).
 - Import shared types from `@handy/contracts` instead of making your own, so everyone stays in sync.

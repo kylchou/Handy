@@ -4,14 +4,17 @@ import { parse } from "../../lib/validate";
 import type { TokenRevocations } from "../../middleware/auth";
 import type { RouteDeps } from "../types";
 
-export async function authRoutes(app: FastifyInstance, { services, guards, revocations }: RouteDeps & { revocations: TokenRevocations }) {
-  app.post("/auth/signup", async (req, reply) => {
+export async function authRoutes(
+  app: FastifyInstance,
+  { services, guards, limits, revocations }: RouteDeps & { revocations: TokenRevocations },
+) {
+  app.post("/auth/signup", { config: { rateLimit: limits.signup } }, async (req, reply) => {
     const body = parse(signupSchema, req.body);
     reply.code(201);
     return services.auth.signup(body);
   });
 
-  app.post("/auth/login", async (req) => services.auth.login(parse(loginSchema, req.body)));
+  app.post("/auth/login", { config: { rateLimit: limits.login } }, async (req) => services.auth.login(parse(loginSchema, req.body)));
 
   app.post("/auth/logout", { preHandler: guards.auth }, async (req, reply) => {
     revocations.revoke(req.user.jti, req.user.exp);

@@ -9,9 +9,10 @@ import type {
   RealtimeEvent,
   SendConversationMessageResponse,
 } from "@handy/contracts";
-import { createDb, DEMO_PASSWORD, seed, type DbHandle } from "@handy/db";
+import { DEMO_PASSWORD, type DbHandle } from "@handy/db";
 import { buildApp, type App } from "../src/app";
 import { loadConfig } from "../src/config";
+import { createTestDb } from "./helpers";
 import { addDays, todayIn } from "../src/lib/time";
 
 let ctx: App;
@@ -36,11 +37,9 @@ async function chat(who: string, conversationId: string, content: string) {
 }
 
 beforeAll(async () => {
-  handle = await createDb("pglite://memory");
-  await handle.migrate();
-  await seed(handle.db, () => {});
+  handle = await createTestDb();
   ctx = await buildApp({
-    config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "" }),
+    config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false }),
     dbHandle: handle,
     logger: false,
     backgroundJobs: false,
@@ -377,7 +376,7 @@ describe("safety and re-matching", () => {
   it("expires offers nobody answers and passes the job to the next worker", async () => {
     // A second app on the same database that only offers each request to one worker at a time.
     const oneAtATime = await buildApp({
-      config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "", matchInitialOffers: 1 }),
+      config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false, matchInitialOffers: 1 }),
       dbHandle: handle,
       logger: false,
       backgroundJobs: false,

@@ -42,3 +42,29 @@ export function formatTime12h(time: string): string {
   const hour = h % 12 === 0 ? 12 : h % 12;
   return m === 0 ? `${hour} ${suffix}` : `${hour}:${String(m).padStart(2, "0")} ${suffix}`;
 }
+
+/** Milliseconds the given timezone is ahead of UTC at `instant`. */
+function tzOffsetMs(instant: Date, timezone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(instant);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)!.value);
+  return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second")) - instant.getTime();
+}
+
+/** The exact moment a local date + time happens in `timezone`, e.g. ("2026-09-27", "10:00", "America/New_York"). */
+export function zonedDateTimeToDate(date: string, time: string, timezone: string): Date {
+  const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+  const [h, mi] = time.split(":").map(Number) as [number, number];
+  const guess = Date.UTC(y, m - 1, d, h, mi);
+  // Second pass corrects for a DST change between the guess and the real time.
+  const first = guess - tzOffsetMs(new Date(guess), timezone);
+  return new Date(guess - tzOffsetMs(new Date(first), timezone));
+}

@@ -233,6 +233,9 @@ export const jobs = pgTable(
     /** 4-digit code the customer reads to the worker at the door. Only the customer sees it. */
     arrivalCode: text("arrival_code"),
     arrivalCodeAttempts: integer("arrival_code_attempts").notNull().default(0),
+    /** When the "tomorrow" / "in about an hour" reminders went out (or were skipped). */
+    dayReminderSentAt: ts("day_reminder_sent_at"),
+    hourReminderSentAt: ts("hour_reminder_sent_at"),
     finalPriceCents: integer("final_price_cents"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

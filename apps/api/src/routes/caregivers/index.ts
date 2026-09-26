@@ -4,7 +4,7 @@ import { parse } from "../../lib/validate";
 import type { IdParams, RouteDeps } from "../types";
 
 /** Linking family members to a customer, and the caregiver's read-only dashboard. */
-export async function caregiverRoutes(app: FastifyInstance, { services, guards }: RouteDeps) {
+export async function caregiverRoutes(app: FastifyInstance, { services, guards, limits }: RouteDeps) {
   // Customer side
   app.post("/customers/me/caregivers/invite", { preHandler: guards.customer }, async (req, reply) => {
     reply.code(201);
@@ -19,7 +19,7 @@ export async function caregiverRoutes(app: FastifyInstance, { services, guards }
   });
 
   // Caregiver side
-  app.post("/caregivers/me/links", { preHandler: guards.caregiver }, async (req, reply) => {
+  app.post("/caregivers/me/links", { preHandler: guards.caregiver, config: { rateLimit: limits.caregiverInvite } }, async (req, reply) => {
     const { code } = parse(acceptCaregiverInviteSchema, req.body);
     reply.code(201);
     return services.caregivers.acceptInvite(req.user, code);

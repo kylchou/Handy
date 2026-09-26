@@ -1,12 +1,15 @@
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
+import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from "fastify";
-import { API_PREFIX, type AIService, type ApiErrorBody, type MatchingService } from "@handy/contracts";
+import { API_PREFIX, type AIService, type ApiErrorBody, type MatchingService, type UserRole } from "@handy/contracts";
 import { createDb, seed, type DbHandle } from "@handy/db";
 import type { AppConfig } from "./config";
+import { registerApiDocs } from "./docs/openapi";
 import { loadIntegrations } from "./integrations";
 import { ApiError } from "./lib/errors";
+import { createRateLimits } from "./lib/rate-limits";
 import { authenticate, newJti, requireRole, TokenRevocations } from "./middleware/auth";
 import { adminRoutes } from "./routes/admin";
 import { authRoutes } from "./routes/auth";
@@ -70,6 +73,17 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
     formatUser: (p) => ({ id: p.sub, role: p.role, jti: p.jti, exp: (p as { exp?: number }).exp }),
   });
   await app.register(websocket);
+  if (config.rateLimitEnabled) {
+    // Off by default; only routes with `config.rateLimit` are limited. preHandler so the body is parsed.
+    await app.register(rateLimit, {
+      global: false,
+      hook: "preHandler",
+      errorResponseBuilder: (_req, ctx) =>
+        new ApiError("RATE_LIMITED", "You're doing that a little too often. Please wait a moment and try again.", {
+          retryAfterSeconds: Math.ceil(ctx.ttl / 1000),
+        }),
+    });
+  }
 
   // Treat an empty JSON body as {} so action endpoints like POST /requests/:id/cancel work with any client.
   app.addContentTypeParser("application/json", { parseAs: "string" }, (_req, body, done) => {
@@ -91,17 +105,36 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
   );
 
   const auth = authenticate(revocations);
+  // Getters hand each route its own array: plugins like @fastify/rate-limit push
+  // onto a route's preHandler list, which must never leak into other routes.
+  const roles = (...r: UserRole[]) => [auth, requireRole(...r)];
   const guards: Guards = {
-    auth: [auth],
-    customer: [auth, requireRole("CUSTOMER")],
-    worker: [auth, requireRole("WORKER")],
-    caregiver: [auth, requireRole("CAREGIVER")],
-    admin: [auth, requireRole("ADMIN")],
-    customerOrAdmin: [auth, requireRole("CUSTOMER", "ADMIN")],
-    workerOrAdmin: [auth, requireRole("WORKER", "ADMIN")],
-    jobParticipant: [auth, requireRole("CUSTOMER", "WORKER", "ADMIN")],
+    get auth() {
+      return [auth];
+    },
+    get customer() {
+      return roles("CUSTOMER");
+    },
+    get worker() {
+      return roles("WORKER");
+    },
+    get caregiver() {
+      return roles("CAREGIVER");
+    },
+    get admin() {
+      return roles("ADMIN");
+    },
+    get customerOrAdmin() {
+      return roles("CUSTOMER", "ADMIN");
+    },
+    get workerOrAdmin() {
+      return roles("WORKER", "ADMIN");
+    },
+    get jobParticipant() {
+      return roles("CUSTOMER", "WORKER", "ADMIN");
+    },
   };
-  const deps: RouteDeps = { services, guards };
+  const deps: RouteDeps = { services, guards, limits: createRateLimits(app) };
 
   app.setErrorHandler((err, req, reply) => {
     let body: ApiErrorBody;
@@ -124,6 +157,9 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
     const body: ApiErrorBody = { error: { code: "NOT_FOUND", message: `No route for ${req.method} ${req.url}` } };
     reply.status(404).send(body);
   });
+
+  // Before any routes, so every route gets its docs attached.
+  if (config.docsEnabled) await registerApiDocs(app);
 
   app.get("/health", async () => ({ ok: true, db: dbHandle.driver, realtimeConnections: bus.connectionCount() }));
 
@@ -155,6 +191,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
         .expirePastRequests()
         .then(() => services.matching.expireOffers())
         .then(() => services.matching.expandStale())
+        .then(() => services.jobs.sendReminders())
         .catch((err) => app.log.error({ err }, "matching sweep failed"));
     }, interval);
     timer.unref();
