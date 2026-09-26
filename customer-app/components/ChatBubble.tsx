@@ -1,22 +1,24 @@
-import type { ChatSenderType } from "@/lib/types";
+import type { SenderType } from "@/lib/types";
 
 export default function ChatBubble({
   senderType,
   content,
 }: {
-  senderType: ChatSenderType;
+  senderType: SenderType;
   content: string;
 }) {
   const isCustomer = senderType === "CUSTOMER";
   return (
     <div
-      className={`flex w-full ${isCustomer ? "justify-end" : "justify-start"}`}
+      className={`flex w-full animate-fade-up ${
+        isCustomer ? "justify-end" : "justify-start"
+      }`}
     >
       <div
         className={`max-w-[85%] rounded-card px-5 py-3 text-lg leading-snug shadow-soft ${
           isCustomer
-            ? "bg-accent text-white"
-            : "border border-line bg-white text-ink"
+            ? "rounded-br-md bg-accent text-white"
+            : "rounded-bl-md border border-line bg-white text-ink"
         }`}
       >
         {content}

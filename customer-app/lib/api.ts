@@ -25,11 +25,9 @@ import {
  * This is the ONLY file in /apps/customer that should know the
  * difference between a mock and a real backend call. Every page and
  * component talks to the functions exported here, never to `fetch`
- * or the mock module directly. When Engineer 2's `/api/v1` routes are
- * live, set NEXT_PUBLIC_USE_MOCK_API=false and nothing else in this
- * app needs to change.
+ * or the mock module directly. 
  *
- * All routes below match the contract in the project spec exactly -
+ * All routes below match the contract in the project spec exactly.
  * keep them in sync with `/packages/contracts` rather than improvising.
  */
 
@@ -116,7 +114,7 @@ export async function getMe(): Promise<UserDTO> {
   return request("/auth/me");
 }
 
-// ---------- AI chat ----------
+// AI chat
 
 export async function sendChatMessage(
   conversationId: string,
@@ -129,7 +127,7 @@ export async function sendChatMessage(
   });
 }
 
-// ---------- Requests & jobs ----------
+// Requests and jobs
 
 export async function confirmServiceRequest(
   customerId: string,
@@ -230,7 +228,7 @@ export async function updateProfile(
   });
 }
 
-// ---------- Realtime job events (SSE in production, simulated in mock) ----------
+// Job events
 
 export function subscribeToJob(
   jobId: string,
@@ -246,7 +244,7 @@ export function subscribeToJob(
     try {
       onEvent(JSON.parse(e.data) as ServerEvent);
     } catch {
-      // ignore malformed events
+      
     }
   };
   return () => source.close();
