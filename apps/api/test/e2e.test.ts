@@ -3,6 +3,7 @@ import WebSocket from "ws";
 import type {
   AuthResponse,
   CreateConversationResponse,
+  ConversationSummaryDTO,
   CreateServiceRequestResponse,
   JobDetailDTO,
   JobOfferDTO,
@@ -263,6 +264,17 @@ describe("safety and re-matching", () => {
     });
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe("POTENTIAL_EMERGENCY");
+  });
+
+  it("lists past chats newest first, skipping greeting-only ones", async () => {
+    const empty = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    const conv = (await call<CreateConversationResponse>("POST", "/ai/conversations", "margaret")).body.conversation;
+    await chat("margaret", conv.id, "My gutters need cleaning");
+    const res = await call<ConversationSummaryDTO[]>("GET", "/ai/conversations", "margaret");
+    expect(res.status).toBe(200);
+    expect(res.body[0]).toMatchObject({ id: conv.id, status: "ACTIVE", title: "My gutters need cleaning", serviceRequestId: null });
+    expect(res.body.some((c) => c.id === empty.id)).toBe(false);
+    expect((await call("GET", "/ai/conversations", "james")).status).toBe(403);
   });
 
   it("refuses to submit an incomplete request", async () => {

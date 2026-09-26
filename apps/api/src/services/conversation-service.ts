@@ -1,6 +1,7 @@
 import type {
   AIResponse,
   ConversationDetailResponse,
+  ConversationSummaryDTO,
   CreateConversationResponse,
   SendConversationMessageResponse,
   ServiceRequestDraft,
@@ -31,6 +32,32 @@ export class ConversationService {
     const conv = await conversationsRepo.create(this.ctx.db, actor.id);
     const greeting = await conversationsRepo.addMessage(this.ctx.db, { conversationId: conv.id, senderType: "AI", content: GREETING });
     return { conversation: toConversationDTO(conv, null), messages: [toConversationMessageDTO(greeting)] };
+  }
+
+  /** Past chats, newest first. Skips chats that are only the greeting. */
+  async list(actor: Actor): Promise<ConversationSummaryDTO[]> {
+    const { db } = this.ctx;
+    const convs = await conversationsRepo.listByCustomer(db, actor.id, 30);
+    const ids = convs.map((c) => c.id);
+    const [msgs, requestIds] = await Promise.all([conversationsRepo.messagesFor(db, ids), conversationsRepo.requestIdsFor(db, ids)]);
+    const byConv = new Map<string, typeof msgs>();
+    for (const m of msgs) byConv.set(m.conversationId, [...(byConv.get(m.conversationId) ?? []), m]);
+    return convs.flatMap((c) => {
+      const list = byConv.get(c.id) ?? [];
+      const first = list.find((m) => m.senderType === "CUSTOMER");
+      if (!first) return [];
+      return [
+        {
+          id: c.id,
+          status: c.status,
+          title: first.content,
+          lastMessage: list[list.length - 1]!.content,
+          serviceRequestId: requestIds.get(c.id) ?? null,
+          createdAt: c.createdAt.toISOString(),
+          updatedAt: c.updatedAt.toISOString(),
+        },
+      ];
+    });
   }
 
   async get(actor: Actor, conversationId: string): Promise<ConversationDetailResponse> {

@@ -4,13 +4,29 @@
 
 /* Font is loaded in app/layout.tsx via next/font (sets --font-atkinson). */
 
+/* Color tokens as RGB channels (tailwind.config.ts reads them). */
+:root {
+  --c-paper: 251 249 244;
+  --c-ink: 30 42 48;
+  --c-ink-soft: 62 76 82;
+  --c-line: 220 213 196;
+  --c-field: 140 129 112;
+  --c-accent: 47 93 83;
+  --c-accent-dark: 32 66 59;
+  --c-accent-light: 228 238 234;
+  --c-warm: 193 99 31;
+  --c-warm-light: 247 232 216;
+  --c-danger: 163 49 42;
+  --c-danger-light: 246 227 225;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background-color: #fbf9f4;
-  color: #1e2a30;
+  background-color: rgb(var(--c-paper));
+  color: rgb(var(--c-ink));
   font-family: var(--font-atkinson), "Atkinson Hyperlegible", ui-sans-serif, system-ui, sans-serif;
 }
 
@@ -21,7 +37,7 @@ button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 3px solid #2f5d53;
+  outline: 3px solid rgb(var(--c-accent));
   outline-offset: 3px;
 }
 
@@ -42,18 +58,43 @@ a.tap-target {
   min-height: 48px;
 }
 
-/* Driven by the toggles on /settings (see app/(app)/layout.tsx), persisted
-   in localStorage as "pref_large_text" / "pref_high_contrast". Kept as a
-   couple of small overrides rather than a second theme file. */
-html.pref-large-text {
-  font-size: 118%;
+/* Display settings from /settings. Saved to the profile and cached in
+   localStorage ("handy_display"); an inline script in app/layout.tsx adds
+   these classes before first paint so the page never jumps sizes. */
+
+/* Text size. Everything is sized in rem, so scaling the root scales text,
+   spacing and tap targets together. Icons are sized in px, so zoom them. */
+html.text-size-large {
+  font-size: 115%;
 }
-html.pref-high-contrast body {
-  background-color: #ffffff;
+html.text-size-largest {
+  font-size: 130%;
 }
-html.pref-high-contrast :is(.text-ink-soft) {
-  color: #1e2a30 !important;
+html.text-size-large .lucide {
+  zoom: 1.15;
 }
-html.pref-high-contrast :is(.border-line) {
-  border-color: #1e2a30 !important;
+html.text-size-largest .lucide {
+  zoom: 1.3;
+}
+
+/* High contrast: same look, darker text and borders, plain white background.
+   Soft text becomes full ink, faint dividers become visible, and the orange
+   and green used for text get dark enough to read easily (7:1 or better). */
+html.pref-high-contrast {
+  --c-paper: 255 255 255;
+  --c-ink: 12 18 22;
+  --c-ink-soft: 30 42 48;
+  --c-line: 120 111 96;
+  --c-field: 62 56 48;
+  --c-accent: 31 74 64;
+  --c-accent-dark: 20 52 45;
+  --c-warm: 150 70 15;
+  --c-danger: 135 35 29;
+}
+html.pref-high-contrast .bg-warm-fade {
+  background-image: none;
+}
+html.pref-high-contrast ::placeholder {
+  color: rgb(var(--c-ink-soft));
+  opacity: 1;
 }

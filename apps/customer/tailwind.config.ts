@@ -2,30 +2,34 @@ import type { Config } from "tailwindcss";
 
 // Design tokens for the customer app.
 
+/** A color from the --c-* variables, keeping opacity modifiers like bg-paper/90 working. */
+const c = (name: string) => `rgb(var(--c-${name}) / <alpha-value>)`;
+
 const config: Config = {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
+      // Colors are CSS variables (app/globals.css) so high contrast mode can swap them.
       colors: {
-        paper: "#FBF9F4",
-        ink: "#1E2A30",
-        "ink-soft": "#3E4C52",
-        line: "#DCD5C4",
+        paper: c("paper"),
+        ink: c("ink"),
+        "ink-soft": c("ink-soft"),
+        line: c("line"),
         // Text-entry borders. `line` is too faint on white (~1.4:1); this is ~3.8:1 (WCAG needs 3:1).
-        field: "#8C8170",
+        field: c("field"),
         surface: "#FFFFFF",
         accent: {
-          DEFAULT: "#2F5D53",
-          dark: "#20423B",
-          light: "#E4EEEA",
+          DEFAULT: c("accent"),
+          dark: c("accent-dark"),
+          light: c("accent-light"),
         },
         warm: {
-          DEFAULT: "#C1631F",
-          light: "#F7E8D8",
+          DEFAULT: c("warm"),
+          light: c("warm-light"),
         },
         danger: {
-          DEFAULT: "#A3312A",
-          light: "#F6E3E1",
+          DEFAULT: c("danger"),
+          light: c("danger-light"),
         },
       },
       fontFamily: {

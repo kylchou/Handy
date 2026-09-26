@@ -18,6 +18,7 @@ import type {
   CaregiverPersonDTO,
   ConversationDTO,
   ConversationMessageDTO,
+  ConversationSummaryDTO,
   CustomerHistoryItemDTO,
   CustomerProfileDTO,
   JobDetailDTO,
@@ -88,6 +89,7 @@ const emergencyContactSchema = z.object({
 
 const accessibilityPreferencesSchema = z.object({
   largeText: z.boolean().optional(),
+  textSize: z.enum(["DEFAULT", "LARGE", "LARGEST"]).optional(),
   highContrast: z.boolean().optional(),
   voiceInput: z.boolean().optional(),
   voiceResponses: z.boolean().optional(),
@@ -345,6 +347,7 @@ export interface ApiResponses {
   "GET /workers/me/earnings": WorkerEarningsDTO;
   "GET /workers/:workerId": WorkerPublicDTO;
   "GET /workers/:workerId/ratings": RatingDTO[];
+  "GET /ai/conversations": ConversationSummaryDTO[];
   "POST /ai/conversations": CreateConversationResponse;
   "GET /ai/conversations/:conversationId": ConversationDetailResponse;
   "POST /ai/conversations/:conversationId/messages": SendConversationMessageResponse;

@@ -40,8 +40,12 @@ export interface EmergencyContact {
   relationship?: string;
 }
 
+/** App text size. DEFAULT is the normal size; the other two scale the whole app up. */
+export type TextSize = "DEFAULT" | "LARGE" | "LARGEST";
+
 export interface AccessibilityPreferences {
   largeText?: boolean;
+  textSize?: TextSize;
   highContrast?: boolean;
   voiceInput?: boolean;
   voiceResponses?: boolean;
@@ -182,6 +186,19 @@ export interface ConversationDTO {
   readyToSubmit: boolean;
   safetyStatus: SafetyStatus;
   /** Set once a ServiceRequest has been created from this conversation. */
+  serviceRequestId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One row in the customer's list of past chats. */
+export interface ConversationSummaryDTO {
+  id: string;
+  status: ConversationStatus;
+  /** The customer's first message. */
+  title: string;
+  /** The newest message, from either side. */
+  lastMessage: string;
   serviceRequestId: string | null;
   createdAt: string;
   updatedAt: string;
