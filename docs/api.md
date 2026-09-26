@@ -226,6 +226,10 @@ Each reminder only goes out once. It's skipped if the worker accepted after that
 
 `POST /admin/demo/reset` puts everything back to the starting demo data: all requests, jobs, chats, and notifications are deleted, accounts made after seeding are removed, and the demo workers' ratings and stats go back to normal. The demo accounts keep the same ids, so nobody gets logged out. Everyone connected gets a `DEMO_RESET` event so the apps can reload. It's turned off when `NODE_ENV=production` unless `ALLOW_DEMO_RESET=true`.
 
+**Demo autopilot.** `PUT /admin/demo/autopilot` with `{ "enabled": true, "stepSeconds": 8 }` turns on a fake worker, so one person can show the whole flow from the customer app without a second phone. While it's on, any new request gets accepted by the best matched worker after one step, then goes on the way, arrived, started, and done, one step at a time. It uses the same calls a real worker would (it even enters the arrival code), so the customer app sees the normal live updates and notifications. `stepSeconds` can be 2 to 60 and defaults to 8. Requests made before you turned it on are left alone. `GET /admin/demo/autopilot` shows whether it's on and which jobs it's moving along. It turns off if the server restarts, and it's blocked in production the same way demo reset is.
+
+From the API client: `api.admin.setAutopilot({ enabled: true })`.
+
 ## Live updates
 
 Pass the token in the URL since you can't set headers on these. Use whichever one you want, they send the same thing:
@@ -285,4 +289,4 @@ The backend also has its own emergency check on every message and request, separ
 
 - Address lookup uses OpenStreetMap's free service, which only allows 1 lookup per second. That's fine for a demo but a real launch would want a paid geocoder. If a lookup fails, the job falls back to the customer's home location.
 - Payments are fake. Price is the category's base price, +$10 if urgent. Platform fee is `PLATFORM_FEE_CENTS`.
-- Live updates and logout tracking are stored in memory, so it only works with one API server running.
+- Live updates, logout tracking, and the demo autopilot are stored in memory, so it only works with one API server running.

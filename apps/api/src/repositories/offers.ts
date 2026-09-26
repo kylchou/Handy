@@ -44,6 +44,23 @@ export const offersRepo = {
       .where(and(eq(jobOffers.status, "PENDING"), lt(jobOffers.createdAt, before)))
       .returning();
   },
+  /** Pending offers sent before `sentBefore` on requests made after `requestsAfter`, best score first. */
+  async pendingForNewRequests(db: Database, requestsAfter: Date, sentBefore: Date) {
+    return db
+      .select({ offer: jobOffers })
+      .from(jobOffers)
+      .innerJoin(serviceRequests, eq(serviceRequests.id, jobOffers.requestId))
+      .where(
+        and(
+          eq(jobOffers.status, "PENDING"),
+          lt(jobOffers.createdAt, sentBefore),
+          eq(serviceRequests.status, "SEARCHING"),
+          gt(serviceRequests.createdAt, requestsAfter),
+        ),
+      )
+      .orderBy(desc(jobOffers.score))
+      .then((rows) => rows.map((r) => r.offer));
+  },
   /** A worker's pending offers along with each request's date and time window. */
   async pendingWithWindows(db: Database, workerId: string) {
     return db

@@ -32,7 +32,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Live updates over SSE or WebSockets, plus saved notifications. If the connection drops, it catches up on what it missed when it reconnects.
 - Ratings, job history, worker earnings, and admin stats
 - A typed API client in `@handy/contracts` for the frontends
-- A demo reset so we can start the demo fresh for each judge
+- A demo reset so we can start the demo fresh for each judge, and a demo autopilot that plays the worker's side so one person can demo the whole thing from the customer app
 - If the AI or matching service crashes, hangs, or sends back junk, the backend quietly uses its built-in version for that message instead of breaking the demo
 - Rate limits on login, signup, and the AI chat, so nobody can brute force passwords or run up our AI bill
 

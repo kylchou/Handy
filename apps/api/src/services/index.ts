@@ -1,5 +1,6 @@
 import { categoriesRepo } from "../repositories/categories";
 import { AdminService } from "./admin-service";
+import { DemoAutopilot } from "./autopilot-service";
 import { AuthService, type TokenSigner } from "./auth-service";
 import { CaregiverService } from "./caregiver-service";
 import type { ServiceContext } from "./context";
@@ -16,13 +17,15 @@ export function createServices(ctx: ServiceContext, sign: TokenSigner) {
   const matching = new MatchingOrchestrator(ctx);
   const conversations = new ConversationService(ctx);
   const profiles = new ProfileService(ctx);
+  const jobs = new JobService(ctx, matching);
   return {
     auth: new AuthService(ctx, sign),
     profiles,
     caregivers: new CaregiverService(ctx, profiles),
     conversations,
     requests: new RequestService(ctx, conversations, matching),
-    jobs: new JobService(ctx, matching),
+    jobs,
+    autopilot: new DemoAutopilot(ctx, jobs),
     matching,
     schedules: new ScheduleService(ctx, matching),
     notifications: new NotificationService(ctx),

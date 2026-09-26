@@ -217,6 +217,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
     timer.unref();
     app.addHook("onClose", async () => clearInterval(timer));
   }
+  app.addHook("onClose", async () => services.autopilot.stop());
   if (!opts.dbHandle) app.addHook("onClose", async () => dbHandle.close());
 
   return { app, services, bus, dbHandle };

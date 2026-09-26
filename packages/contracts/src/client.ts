@@ -6,6 +6,7 @@ import type {
   createRatingSchema,
   createServiceRequestSchema,
   loginSchema,
+  SetAutopilotBody,
   signupSchema,
   updateAvailabilitySchema,
   updateCustomerProfileSchema,
@@ -236,6 +237,9 @@ export function createApiClient(options: ApiClientOptions) {
         patch(`/admin/workers/${id(workerId)}/verification`, { verificationStatus }),
       /** Puts the database back to the starting demo data. */
       resetDemo: (): R<"POST /admin/demo/reset"> => post("/admin/demo/reset"),
+      autopilot: (): R<"GET /admin/demo/autopilot"> => get("/admin/demo/autopilot"),
+      /** Turns on the fake worker that accepts new requests and walks them through to done. */
+      setAutopilot: (body: SetAutopilotBody): R<"PUT /admin/demo/autopilot"> => put("/admin/demo/autopilot", body),
     },
 
     realtime: {
