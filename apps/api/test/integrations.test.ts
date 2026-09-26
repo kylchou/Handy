@@ -25,10 +25,10 @@ describe("loading teammates' packages", () => {
 
   it("still starts if the AI package throws on setup", async () => {
     const log = quietLog();
-    const ai = fakeModule("throws", `export function createAIService() { throw new Error("ANTHROPIC_API_KEY is not set"); }`);
+    const ai = fakeModule("throws", `export function createAIService() { throw new Error("MODEL_API_KEY is not set"); }`);
     const loaded = await loadIntegrations({ ai, matching: "" }, log);
     expect(loaded.ai).toBeInstanceOf(FallbackAIService);
-    expect(log.warnings.join()).toContain("ANTHROPIC_API_KEY is not set");
+    expect(log.warnings.join()).toContain("MODEL_API_KEY is not set");
   });
 
   it("falls back when the factory returns the wrong thing", async () => {

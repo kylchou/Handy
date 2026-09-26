@@ -7,7 +7,8 @@ import {
   type ServiceRequestDraft,
 } from "@handy/contracts";
 import { AIServiceError } from "./errors.js";
-import { ClaudeExtractionModel, type ExtractionModel, type ModelRunResult } from "./model.js";
+import type { ExtractionModel, ModelRunResult } from "./model.js";
+import { MuseExtractionModel } from "./muse.js";
 import { buildContextBlock, clockIn, SYSTEM_PROMPT } from "./prompt.js";
 import { EMERGENCY_MESSAGES, classifySafety } from "./safety.js";
 import type { ModelTurn } from "./schema.js";
@@ -45,7 +46,7 @@ export class HandyAIService implements AIService {
   private readonly maxHistoryTurns: number;
 
   constructor(options: HandyAIServiceOptions = {}) {
-    this.model = options.model ?? new ClaudeExtractionModel();
+    this.model = options.model ?? new MuseExtractionModel();
     this.maxHistoryTurns = options.maxHistoryTurns ?? 40;
   }
 
@@ -129,7 +130,7 @@ function respond(
   };
 }
 
-/** Claude needs a user turn first; backend history starts with the AI greeting, so leading assistant turns are dropped. */
+/** The model wants a user turn first; backend history starts with the AI greeting, so leading assistant turns are dropped. */
 function toModelHistory(history: AIConversationContext["history"]): ChatTurn[] {
   const turns: ChatTurn[] = history.map((h) => ({ role: h.role === "customer" ? "user" : "assistant", content: h.content }));
   const firstUser = turns.findIndex((t) => t.role === "user");

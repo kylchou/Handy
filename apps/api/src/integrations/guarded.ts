@@ -16,7 +16,7 @@ import {
 
 type Logger = { warn: (msg: string) => void };
 
-const DEFAULT_AI_TIMEOUT_MS = 30_000;
+const DEFAULT_AI_TIMEOUT_MS = 45_000;
 const MATCHING_TIMEOUT_MS = 5_000;
 
 /**

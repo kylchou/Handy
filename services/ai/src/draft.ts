@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { AIServiceError } from "./errors.js";
-import { ClaudeJsonClient, type ClaudeModelOptions, type JsonClient, type ModelInput } from "./model.js";
+import type { JsonClient, ModelInput } from "./model.js";
+import { MuseJsonClient, type MuseModelOptions } from "./muse.js";
 import { classifySafety } from "./safety.js";
 import type { ChatTurn, EmergencyGuidance } from "./types.js";
 
@@ -60,7 +61,7 @@ If the message needs a fact you don't have (for example, where the washing machi
 
 The <job> block is written by the app, not the customer.`;
 
-/** Any JsonClient (Claude or Muse) → DraftModel. */
+/** Any JsonClient → DraftModel. */
 export class JsonDraftModel implements DraftModel {
   constructor(private readonly client: JsonClient) {}
 
@@ -76,9 +77,9 @@ export class JsonDraftModel implements DraftModel {
   }
 }
 
-export class ClaudeDraftModel extends JsonDraftModel {
-  constructor(options: ClaudeModelOptions = {}) {
-    super(new ClaudeJsonClient(options));
+export class MuseDraftModel extends JsonDraftModel {
+  constructor(options: MuseModelOptions = {}) {
+    super(new MuseJsonClient(options));
   }
 }
 
@@ -92,7 +93,7 @@ export class JobMessageDrafter {
   private readonly model: DraftModel;
 
   constructor(options: { model?: DraftModel } = {}) {
-    this.model = options.model ?? new ClaudeDraftModel();
+    this.model = options.model ?? new MuseDraftModel();
   }
 
   async draft(job: JobContext, instruction: string, history: ChatTurn[] = []): Promise<DraftResult> {

@@ -3,8 +3,7 @@ import type OpenAI from "openai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { HandyAIService } from "../src/aiService.js";
 import { AIServiceError } from "../src/errors.js";
-import { createAIService, selectProvider } from "../src/index.js";
-import { ClaudeExtractionModel } from "../src/model.js";
+import { createAIService, requireApiKey } from "../src/index.js";
 import { DEFAULT_MUSE_MODEL, MuseExtractionModel, MuseJsonClient } from "../src/muse.js";
 import { MODEL_TURN_JSON_SCHEMA } from "../src/schema.js";
 
@@ -70,7 +69,7 @@ const ctx: AIConversationContext = {
 };
 
 describe("MuseJsonClient request shape", () => {
-  it("sends system first, flattened strings, strict json_schema, default model, no Anthropic options", async () => {
+  it("sends system first, flattened strings, strict json_schema, default model, nothing extra", async () => {
     const { client, calls } = fakeOpenAI([answer(goodTurn)]);
     await new MuseExtractionModel({ client }).run(input);
 
@@ -86,7 +85,7 @@ describe("MuseJsonClient request shape", () => {
       type: "json_schema",
       json_schema: { name: "service_request_turn", schema: MODEL_TURN_JSON_SCHEMA, strict: true },
     });
-    for (const key of ["betas", "fallbacks", "output_config", "effort", "max_tokens"]) expect(sent).not.toHaveProperty(key);
+    expect(Object.keys(sent).sort()).toEqual(["messages", "model", "response_format"]);
   });
 
   it("uses a custom model id", async () => {
@@ -167,8 +166,8 @@ describe("MuseJsonClient results and errors", () => {
   });
 });
 
-describe("provider selection", () => {
-  const keys = ["MODEL_API_KEY", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "AI_PROVIDER", "AI_MODEL"] as const;
+describe("createAIService", () => {
+  const keys = ["MODEL_API_KEY", "AI_MODEL"] as const;
   let saved: Record<string, string | undefined> = {};
   beforeEach(() => {
     saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
@@ -182,40 +181,16 @@ describe("provider selection", () => {
   });
 
   it("no key → throws so the backend falls back at startup", () => {
-    expect(() => createAIService()).toThrow("No AI key set (MODEL_API_KEY or ANTHROPIC_API_KEY)");
+    expect(() => createAIService()).toThrow("MODEL_API_KEY is not set");
     process.env.MODEL_API_KEY = "   ";
-    expect(() => createAIService()).toThrow("No AI key set");
+    expect(() => requireApiKey()).toThrow("MODEL_API_KEY is not set");
   });
 
-  it("MODEL_API_KEY → Muse; ANTHROPIC_API_KEY → Claude; both → Muse", () => {
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-    expect(selectProvider()).toBe("anthropic");
-    process.env.MODEL_API_KEY = "muse-test";
-    expect(selectProvider()).toBe("muse");
-  });
-
-  it("AI_PROVIDER forces a provider, and its key must exist", () => {
-    process.env.MODEL_API_KEY = "muse-test";
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-    process.env.AI_PROVIDER = "anthropic";
-    expect(selectProvider()).toBe("anthropic");
-    process.env.AI_PROVIDER = "MUSE";
-    expect(selectProvider()).toBe("muse");
-
-    delete process.env.MODEL_API_KEY;
-    expect(() => selectProvider()).toThrow("AI_PROVIDER=muse but MODEL_API_KEY is not set");
-    process.env.AI_PROVIDER = "gemini";
-    expect(() => selectProvider()).toThrow('Unknown AI_PROVIDER "gemini"');
-  });
-
-  it("createAIService builds the right model, and an injected model skips selection", () => {
+  it("builds a Muse model when the key is set, and an injected model skips the check", () => {
     process.env.MODEL_API_KEY = "muse-test";
     expect((createAIService() as unknown as { model: unknown }).model).toBeInstanceOf(MuseExtractionModel);
-    process.env.AI_PROVIDER = "anthropic";
-    process.env.ANTHROPIC_API_KEY = "sk-ant-test";
-    expect((createAIService() as unknown as { model: unknown }).model).toBeInstanceOf(ClaudeExtractionModel);
 
-    for (const k of keys) delete process.env[k];
+    delete process.env.MODEL_API_KEY;
     expect(() => createAIService({ model: new MuseExtractionModel({ client: fakeOpenAI([]).client }) })).not.toThrow();
   });
 });

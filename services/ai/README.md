@@ -3,10 +3,10 @@
 Front desk of Handy. Plain-language conversation in, structured service request out. No categories to pick, no forms. Also helps customers write messages to their worker, screens job chat for scams, and builds privacy-safe job cards for workers.
 
 ```
-Customer → Backend API → processMessage → safety check → Muse or Claude → validation → AIResponse
+Customer → Backend API → processMessage → safety check → Muse Spark → validation → AIResponse
 ```
 
-Two providers, same behavior: Meta's Muse Spark or Anthropic's Claude. Whichever key is set gets used.
+Runs on Meta's Muse Spark through the Meta Model API.
 
 Implements `AIService` from `packages/contracts/src/ai.ts`. Stateless, no database access: backend passes history + current draft each turn and saves the result.
 
@@ -76,24 +76,19 @@ const res = await createJobMessageDrafter().draft(
 
 ## Setup
 
-Real keys go in the root `.env` only, never committed. Both are empty in `.env.example`.
+The real key goes in the root `.env` only, never committed. It's empty in `.env.example`.
 
 | env (root `.env`) | meaning |
 |---|---|
-| `MODEL_API_KEY` | Meta Model API key → Muse Spark. Used first when set. |
-| `ANTHROPIC_API_KEY` | Claude key (or `ANTHROPIC_AUTH_TOKEN`). Used when `MODEL_API_KEY` is empty. |
-| `AI_PROVIDER` | Optional. `muse` or `anthropic` forces one; its key must be set. |
-| `AI_MODEL` | Optional. Default `muse-spark-1.3` (Muse) or `claude-opus-5` (Claude). |
-| `AI_EFFORT` | Claude only. `medium` default, `low` = faster. |
+| `MODEL_API_KEY` | Meta Model API key for Muse Spark. Required. |
+| `AI_MODEL` | Optional. Default `muse-spark-1.3`. |
 | `AI_SERVICE_MODULE` | `@handy/ai`. Set empty to use the backend's rule-based fallback (no key needed). |
 
-No key → `createAIService()` throws `No AI key set (MODEL_API_KEY or ANTHROPIC_API_KEY)`, backend starts with its built-in assistant.
+No key → `createAIService()` throws `MODEL_API_KEY is not set`, backend starts with its built-in assistant.
 
-**Muse** (`src/muse.ts`): `openai` SDK (`~7.23.0`) pointed at `https://api.meta.ai/v1`. System prompt sent as the first message. Same JSON schema as Claude, `strict: true`; if Meta rejects the schema, switches to `strict: false` for good and zod still checks every reply. `refusal` → treated like a Claude refusal. Cut off (`finish_reason: "length"`) or bad JSON → one retry, then throws.
+**Muse** (`src/muse.ts`): `openai` SDK (`~7.23.0`) pointed at `https://api.meta.ai/v1`. System prompt sent as the first message. JSON schema output with `strict: true`; if Meta rejects the schema, switches to `strict: false` for good and zod still checks every reply. `refusal` → handled like any other refusal. Cut off (`finish_reason: "length"`) or bad JSON → one retry, then throws.
 
-**Claude** (`src/model.ts`): Anthropic SDK (`~0.128.0`). Claude declines → automatic retry on a fallback model (`fallbacks: "default"`).
-
-Both pinned so an SDK update can't break the demo.
+The SDK version is pinned so an update can't break the demo.
 
 ```sh
 pnpm --filter @handy/ai test       # stub model, no key needed
