@@ -10,8 +10,8 @@ type Query = { token?: string; lastEventId?: string };
 /**
  * Realtime transports. Both authenticate with `?token=<jwt>` because browsers
  * can't set headers on EventSource/WebSocket.
- *   GET /api/v1/events — Server-Sent Events (EventSource); each message is a JSON RealtimeMessage.
- *   GET /api/v1/ws     — WebSocket; each message is a JSON RealtimeMessage.
+ *   GET /api/v1/events: Server-Sent Events (EventSource). Each message is a JSON RealtimeMessage.
+ *   GET /api/v1/ws: WebSocket. Each message is a JSON RealtimeMessage.
  *
  * On connect the server sends CONNECTED, then any events missed since the
  * client's last event id (Last-Event-ID header for SSE, ?lastEventId= for

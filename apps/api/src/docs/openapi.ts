@@ -77,7 +77,7 @@ const ROUTE_DOCS: Record<keyof ApiResponses, RouteDoc> = {
   "POST /jobs/offers/:offerId/decline": { tag: "Jobs", summary: "Decline a job", returns: "JobOfferDTO", who: "worker" },
   "GET /jobs": { tag: "Jobs", summary: "My jobs (admins get all)", returns: "JobDetailDTO[]", who: "customer, worker, admin", query: statusQuery(JOB_STATUSES) },
   "GET /jobs/:jobId": { tag: "Jobs", summary: "Get a job", returns: "JobDetailDTO", who: "the job's customer or worker, admin", notes: "arrivalCode is only included for the customer and admins." },
-  "PATCH /jobs/:jobId/status": { tag: "Jobs", summary: "Move a job to its next status", returns: "JobDetailDTO", who: "the job's customer or worker, admin", body: updateJobStatusSchema, notes: "ACCEPTED → EN_ROUTE → ARRIVED → IN_PROGRESS → COMPLETED. Workers need the customer's arrivalCode to mark ARRIVED." },
+  "PATCH /jobs/:jobId/status": { tag: "Jobs", summary: "Move a job to its next status", returns: "JobDetailDTO", who: "the job's customer or worker, admin", body: updateJobStatusSchema, notes: "ACCEPTED -> EN_ROUTE -> ARRIVED -> IN_PROGRESS -> COMPLETED. Workers need the customer's arrivalCode to mark ARRIVED." },
   "GET /jobs/:jobId/messages": { tag: "Jobs", summary: "Chat messages", returns: "JobMessageDTO[]", who: "the job's customer or worker, admin" },
   "POST /jobs/:jobId/messages": { tag: "Jobs", summary: "Send a chat message", returns: "JobMessageDTO", who: "the job's customer or worker", body: sendJobMessageSchema, status: 201 },
   "POST /jobs/:jobId/rating": { tag: "Jobs", summary: "Rate a completed job", returns: "RatingDTO", who: "the job's customer", body: createRatingSchema, status: 201 },

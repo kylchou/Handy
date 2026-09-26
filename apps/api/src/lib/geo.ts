@@ -13,7 +13,7 @@ export function distanceMiles(
   return Math.round(2 * EARTH_RADIUS_MILES * Math.asin(Math.sqrt(h)) * 10) / 10;
 }
 
-/** Drops the street number/name: "123 Main Street, Atlanta, GA" → "Atlanta, GA". */
+/** Drops the street number/name: "123 Main Street, Atlanta, GA" -> "Atlanta, GA". */
 export function approximateLocation(location: string): string {
   const parts = location.split(",").map((p) => p.trim()).filter(Boolean);
   return parts.length > 1 ? parts.slice(1).join(", ") : "Near the customer's home";

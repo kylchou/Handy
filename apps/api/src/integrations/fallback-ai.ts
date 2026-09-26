@@ -30,7 +30,7 @@ export class FallbackAIService implements AIService {
     if (UNSUPPORTED.test(lower)) {
       return {
         message:
-          "I'm sorry — our helpers can't provide medical or nursing care. For that, please contact your doctor. " +
+          "I'm sorry, our helpers can't provide medical or nursing care. For that, please contact your doctor. " +
           "I can help with everyday things like errands, rides, chores around the house, or a friendly visit.",
         extractedData: {},
         missingInformation: missing(ctx.currentDraft),

@@ -257,7 +257,7 @@ export class JobService {
           request.customerId,
           "JOB_CANCELLED",
           `${name} can no longer make it.`,
-          "Don't worry — we're looking for someone else to help you.",
+          "Don't worry, we're looking for someone else to help you.",
           data,
           (who) => ({ title: `${name} can no longer make it to ${who}'s job.`, body: "We're looking for someone else." }),
         );

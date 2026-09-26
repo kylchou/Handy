@@ -137,7 +137,7 @@ export const conversations = pgTable(
   (t) => [index("conversations_customer_idx").on(t.customerId)],
 );
 
-/** Messages in an AI conversation (customer ↔ assistant). */
+/** Messages in an AI conversation (customer and assistant). */
 export const messages = pgTable(
   "messages",
   {
@@ -250,7 +250,7 @@ export const jobs = pgTable(
   ],
 );
 
-/** Customer ↔ worker chat on a job. */
+/** Chat between the customer and worker on a job. */
 export const jobMessages = pgTable(
   "job_messages",
   {
@@ -307,7 +307,7 @@ export const notifications = pgTable(
   (t) => [index("notifications_user_idx").on(t.userId, t.createdAt)],
 );
 
-/** A customer ↔ caregiver (family member) link. Caregivers can see the customer's jobs and get key updates. */
+/** Links a customer to a caregiver (family member). Caregivers can see the customer's jobs and get key updates. */
 export const caregiverLinks = pgTable(
   "caregiver_links",
   {

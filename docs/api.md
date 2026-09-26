@@ -111,7 +111,7 @@ If `emergency` isn't null, show it clearly. It tells the user to call 911, and t
 
 **Booking someone again.** Send `preferredWorkerId` when creating a request (or the AI sets it when the customer says "Can James come back?" or "same person as last time"). The request goes to that worker alone first. If they decline or don't answer in time, it goes to everyone like normal. If they can't do it at all (not available, doesn't do that kind of job), the customer gets told right away and it goes out to everyone. Workers the customer rated 4–5 stars also get a bump in matching, and workers they rated 1–2 stars never get their jobs again.
 
-Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`, or `EXPIRED` if nobody accepted before the requested time window ended. When a request expires, the customer gets a `REQUEST_EXPIRED` event and a notification asking if they want to pick another time. Requests for a time that's already passed get rejected with a 400.
+Request statuses: `SEARCHING -> MATCHED -> COMPLETED`, or `CANCELLED`, or `EXPIRED` if nobody accepted before the requested time window ended. When a request expires, the customer gets a `REQUEST_EXPIRED` event and a notification asking if they want to pick another time. Requests for a time that's already passed get rejected with a 400.
 
 ### Jobs
 
@@ -130,10 +130,10 @@ Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`, or `EXP
 Job status order (can't skip steps):
 
 ```
-ACCEPTED ─► EN_ROUTE ─► ARRIVED ─► IN_PROGRESS ─► COMPLETED     (worker, admin)
-   │           │           │
-   └───────────┴───────────┴─► CANCELLED
+ACCEPTED -> EN_ROUTE -> ARRIVED -> IN_PROGRESS -> COMPLETED
 ```
+
+Only the worker (or an admin) moves it forward.
 
 - Customer can cancel while `ACCEPTED` or `EN_ROUTE`.
 - Worker or admin can cancel any time before `IN_PROGRESS`.

@@ -8,7 +8,7 @@ export function nowTimeIn(timezone: string, now = new Date()): string {
   return new Intl.DateTimeFormat("en-GB", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(now);
 }
 
-/** "2026-09-27" → "Sunday, September 27" */
+/** "2026-09-27" -> "Sunday, September 27" */
 export function friendlyDate(date: string): string {
   return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" });
 }
@@ -24,7 +24,7 @@ export function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** "15:00" + 60 → "16:00", capped at 23:59. */
+/** "15:00" + 60 -> "16:00", capped at 23:59. */
 export function addMinutes(time: string, minutes: number): string {
   const [h, m] = time.split(":").map(Number) as [number, number];
   const total = Math.min(h * 60 + m + minutes, 23 * 60 + 59);

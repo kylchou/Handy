@@ -78,7 +78,7 @@ export interface WorkerQualificationDTO {
   qualificationLevel: QualificationLevel;
 }
 
-/** Full worker profile — only returned to the worker themself and admins. */
+/** Full worker profile. Only sent to the worker themself and admins. */
 export interface WorkerProfileDTO {
   userId: string;
   bio: string | null;
@@ -216,7 +216,7 @@ export interface JobDetailDTO extends JobDTO {
   request: ServiceRequestDTO;
   worker: WorkerPublicDTO;
   customer: CustomerPublicDTO;
-  /** Worker → customer distance in miles, when coordinates are known. */
+  /** Distance from the worker to the customer in miles, when coordinates are known. */
   distanceMiles: number | null;
   rating: RatingDTO | null;
   /**
@@ -238,7 +238,7 @@ export interface JobOfferDTO {
   serviceCategoryId: ServiceCategoryCode;
   serviceName: string;
   description: string;
-  /** Approximate area only until accepted — the street address is withheld. */
+  /** Just the general area until they accept, not the street address. */
   approximateLocation: string;
   requestedDate: string;
   requestedStartTime: string;

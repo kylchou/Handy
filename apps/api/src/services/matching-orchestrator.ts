@@ -12,8 +12,8 @@ import { LOW_RATING, workerHistoryFor } from "./worker-history";
 /**
  * Backend side of matching: loads candidates, asks the MatchingService to rank
  * them, and broadcasts offers in waves:
- *   round 0 — the top MATCH_INITIAL_OFFERS workers, immediately;
- *   later   — every remaining eligible worker, once the request has been
+ *   round 0: the top MATCH_INITIAL_OFFERS workers, right away
+ *   later: every other eligible worker, once the request has been
  *             searching for MATCH_EXPAND_AFTER_SECONDS (see expandStale()).
  */
 export class MatchingOrchestrator {
@@ -106,7 +106,7 @@ export class MatchingOrchestrator {
     }
     const eligible = new Set(candidates.map((c) => c.workerId));
     const ranked = matches.filter((m) => eligible.has(m.workerId));
-    // Rounds: [preferred worker alone] → top MATCH_INITIAL_OFFERS → everyone else who qualifies.
+    // Rounds: [preferred worker alone] -> top MATCH_INITIAL_OFFERS -> everyone else who qualifies.
     const firstOpenRound = preferred ? 1 : 0;
     let chosen = ranked.slice(0, request.matchingRound <= firstOpenRound ? config.matchInitialOffers : Number.POSITIVE_INFINITY);
     if (preferred && request.matchingRound === 0) {
