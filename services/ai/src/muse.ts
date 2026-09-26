@@ -4,7 +4,8 @@ import { JsonExtractionModel, parseJson, type JsonClient, type JsonResult, type 
 
 /** Meta Model API (Muse Spark). OpenAI-compatible Chat Completions, so the openai SDK works with a baseURL. */
 export const MUSE_BASE_URL = "https://api.meta.ai/v1";
-export const DEFAULT_MUSE_MODEL = "muse-spark-1.3";
+/** 1.2 answered about twice as fast as 1.3 in our tests and got the same details right. */
+export const DEFAULT_MUSE_MODEL = "muse-spark-1.2";
 
 export interface MuseModelOptions {
   /** Injected in tests. Default: openai SDK pointed at MUSE_BASE_URL. */
