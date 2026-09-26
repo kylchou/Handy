@@ -33,6 +33,7 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Ratings, job history, worker earnings, and admin stats
 - A typed API client in `@handy/contracts` for the frontends
 - A demo reset so we can start the demo fresh for each judge
+- If the AI or matching service crashes, hangs, or sends back junk, the backend quietly uses its built-in version for that message instead of breaking the demo
 - Rate limits on login, signup, and the AI chat, so nobody can brute force passwords or run up our AI bill
 
 ## Setup
