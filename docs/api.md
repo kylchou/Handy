@@ -47,6 +47,17 @@ A few things to know:
 - **Dates/times:** dates are `YYYY-MM-DD`, times are 24h `HH:mm`, in `APP_TIMEZONE` (Eastern by default). Timestamps are ISO strings.
 - **Money:** in cents, so `3500` = $35.00.
 - **Validation:** request bodies are checked with the zod schemas in `@handy/contracts`. You can use the same schemas for your forms.
+- **Rate limits:** a few endpoints are limited. Going over gets a 429 `RATE_LIMITED` with a `Retry-After` header and `details.retryAfterSeconds`.
+
+  | Endpoint | Limit |
+  | --- | --- |
+  | `POST /auth/login` | 10 tries per 15 min, per IP + email |
+  | `POST /auth/signup` | 10 per hour, per IP |
+  | `POST /ai/conversations/:id/messages` | 20 per minute, per user |
+  | `POST /ai/conversations` | 30 per hour, per user |
+  | `POST /caregivers/me/links` | 10 per 15 min, per user |
+
+  Set `RATE_LIMIT_ENABLED=false` in `.env` if they get in your way while testing locally.
 
 ## Roles
 

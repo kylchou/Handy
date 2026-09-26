@@ -1,4 +1,5 @@
 import type { preHandlerHookHandler } from "fastify";
+import type { RateLimits } from "../lib/rate-limits";
 import type { Services } from "../services";
 
 export interface Guards {
@@ -17,6 +18,7 @@ export interface Guards {
 export interface RouteDeps {
   services: Services;
   guards: Guards;
+  limits: RateLimits;
 }
 
 export type IdParams<K extends string> = { Params: Record<K, string> };

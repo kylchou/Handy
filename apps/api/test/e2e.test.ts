@@ -40,7 +40,7 @@ beforeAll(async () => {
   await handle.migrate();
   await seed(handle.db, () => {});
   ctx = await buildApp({
-    config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "" }),
+    config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false }),
     dbHandle: handle,
     logger: false,
     backgroundJobs: false,
@@ -377,7 +377,7 @@ describe("safety and re-matching", () => {
   it("expires offers nobody answers and passes the job to the next worker", async () => {
     // A second app on the same database that only offers each request to one worker at a time.
     const oneAtATime = await buildApp({
-      config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "", matchInitialOffers: 1 }),
+      config: loadConfig({ seedOnStart: false, jwtSecret: "test-secret", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false, matchInitialOffers: 1 }),
       dbHandle: handle,
       logger: false,
       backgroundJobs: false,

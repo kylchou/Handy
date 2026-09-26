@@ -17,7 +17,7 @@ beforeAll(async () => {
   await handle.migrate();
   await seed(handle.db, () => {});
   server = await buildApp({
-    config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "" }),
+    config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false }),
     dbHandle: handle,
     logger: false,
     backgroundJobs: false,
@@ -430,7 +430,7 @@ describe("API client", () => {
 
   it("refuses to reset when demo reset is turned off", async () => {
     const locked = await buildApp({
-      config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", allowDemoReset: false }),
+      config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false, allowDemoReset: false }),
       dbHandle: handle,
       logger: false,
       backgroundJobs: false,
