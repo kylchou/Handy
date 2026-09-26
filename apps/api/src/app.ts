@@ -10,6 +10,7 @@ import { registerApiDocs } from "./docs/openapi";
 import { loadIntegrations } from "./integrations";
 import { ApiError } from "./lib/errors";
 import { NominatimGeocoder, noGeocoder, type Geocoder } from "./lib/geocoder";
+import { originMatcher } from "./lib/origins";
 import { createRateLimits } from "./lib/rate-limits";
 import { authenticate, newJti, requireRole, TokenRevocations } from "./middleware/auth";
 import { adminRoutes } from "./routes/admin";
@@ -55,7 +56,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
   const { config } = opts;
   const app = Fastify({ logger: opts.logger ?? true, trustProxy: true });
 
-  const dbHandle = opts.dbHandle ?? (await createDb(config.databaseUrl));
+  const dbHandle = opts.dbHandle ?? (await createDb(config.databaseUrl, { ssl: config.databaseSsl }));
   if (!opts.dbHandle) {
     await dbHandle.migrate();
     if (config.seedOnStart) await seed(dbHandle.db, (msg) => app.log.info(msg));
@@ -69,7 +70,12 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
   const bus = new EventBus();
   const revocations = new TokenRevocations();
 
-  await app.register(cors, { origin: config.corsOrigins, credentials: true, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] });
+  const allowedOrigin = originMatcher(config.corsOrigins);
+  await app.register(cors, {
+    origin: (origin, cb) => cb(null, !origin || allowedOrigin(origin)),
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  });
   await app.register(jwt, {
     secret: config.jwtSecret,
     sign: { expiresIn: config.jwtExpiresIn },
@@ -197,7 +203,7 @@ export async function buildApp(opts: BuildAppOptions): Promise<App> {
       await api.register(notificationRoutes, deps);
       await api.register(adminRoutes, deps);
       await api.register(caregiverRoutes, deps);
-      await api.register(realtimeRoutes, { bus, revocations, corsOrigins: config.corsOrigins });
+      await api.register(realtimeRoutes, { bus, revocations, allowedOrigin });
     },
     { prefix: API_PREFIX },
   );

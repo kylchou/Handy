@@ -19,9 +19,9 @@ type Query = { token?: string; lastEventId?: string };
  */
 export async function realtimeRoutes(
   app: FastifyInstance,
-  opts: { bus: EventBus; revocations: TokenRevocations; corsOrigins: string[] },
+  opts: { bus: EventBus; revocations: TokenRevocations; allowedOrigin: (origin: string) => boolean },
 ) {
-  const { bus, revocations, corsOrigins } = opts;
+  const { bus, revocations, allowedOrigin } = opts;
 
   /** Missed events (or RESYNC) followed by a live subscription. Runs synchronously so nothing slips in between. */
   function start(actor: { id: string; role: string }, lastEventId: string | undefined, send: (msg: RealtimeMessage) => void) {
@@ -49,7 +49,7 @@ export async function realtimeRoutes(
     };
     // reply.hijack() bypasses @fastify/cors, so apply the allow-list here.
     const origin = request.headers.origin;
-    if (origin && corsOrigins.includes(origin)) headers["Access-Control-Allow-Origin"] = origin;
+    if (origin && allowedOrigin(origin)) headers["Access-Control-Allow-Origin"] = origin;
     res.writeHead(200, headers);
 
     // The `id:` line is what makes the browser send Last-Event-ID when it reconnects.

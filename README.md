@@ -87,6 +87,7 @@ Every push to `main` and every PR runs typecheck and the tests on GitHub (once w
 ## Notes
 
 - All the endpoints and live events are documented in [docs/api.md](docs/api.md), and there are interactive docs at `/docs` while the API is running.
+- To put the API online (Render, Railway, Fly, or anywhere with Docker), see [docs/deploy.md](docs/deploy.md).
 - Between demo runs, log in as admin and call `POST /api/v1/admin/demo/reset` (or `api.admin.resetDemo()`) to put everything back to the starting data without logging anyone out. Arjun, this would be a good button on the admin dashboard.
 - Use `createApiClient` from `@handy/contracts` to call the backend instead of writing fetch calls (see the top of [docs/api.md](docs/api.md)).
 - Import shared types from `@handy/contracts` instead of making your own, so everyone stays in sync.
