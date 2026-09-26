@@ -1,17 +1,16 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createApiClient, type ApiClient } from "@handy/contracts";
-import { createDb, DEMO_PASSWORD, seed, type DbHandle } from "@handy/db";
+import { DEMO_PASSWORD, type DbHandle } from "@handy/db";
 import { buildApp, type App } from "../src/app";
 import { loadConfig } from "../src/config";
+import { createTestDb } from "./helpers";
 
 let server: App;
 let handle: DbHandle;
 let baseUrl: string;
 
 beforeAll(async () => {
-  handle = await createDb("pglite://memory");
-  await handle.migrate();
-  await seed(handle.db, () => {});
+  handle = await createTestDb();
   server = await buildApp({
     config: loadConfig({ seedOnStart: false, jwtSecret: "rl-test", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: true }),
     dbHandle: handle,

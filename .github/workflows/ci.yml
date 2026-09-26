@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Typecheck and tests (${{ matrix.db }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # pglite = the embedded database we use locally, postgres = a real server like production.
+        db: [pglite, postgres]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: handy
+          POSTGRES_PASSWORD: handy
+          POSTGRES_DB: handy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U handy"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Migrations match the schema
+        run: |
+          pnpm db:generate
+          if [ -n "$(git status --porcelain packages/db/drizzle)" ]; then
+            echo "::error::packages/db/src/schema.ts changed without a migration. Run 'pnpm db:generate' and commit the new files."
+            git status --porcelain packages/db/drizzle
+            exit 1
+          fi
+
+      - name: Tests
+        run: pnpm test
+        env:
+          TEST_DATABASE_URL: ${{ matrix.db == 'postgres' && 'postgres://handy:handy@localhost:5432/handy_test' || '' }}

@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ApiRequestError, createApiClient, type ApiClient, type RealtimeEvent } from "@handy/contracts";
 import { eq } from "drizzle-orm";
-import { createDb, DEMO_PASSWORD, jobs, seed, type DbHandle } from "@handy/db";
+import { DEMO_PASSWORD, jobs, type DbHandle } from "@handy/db";
 import { buildApp, type App } from "../src/app";
 import { loadConfig } from "../src/config";
+import { createTestDb } from "./helpers";
 import { addDays, todayIn, zonedDateTimeToDate } from "../src/lib/time";
 
 let server: App;
@@ -13,9 +14,7 @@ let baseUrl: string;
 const client = (): ApiClient => createApiClient({ baseUrl });
 
 beforeAll(async () => {
-  handle = await createDb("pglite://memory");
-  await handle.migrate();
-  await seed(handle.db, () => {});
+  handle = await createTestDb();
   server = await buildApp({
     config: loadConfig({ seedOnStart: false, jwtSecret: "client-test", aiServiceModule: "", matchingServiceModule: "", rateLimitEnabled: false }),
     dbHandle: handle,

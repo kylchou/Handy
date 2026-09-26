@@ -78,6 +78,8 @@ pnpm db:generate    # make a new migration after changing packages/db/src/schema
 pnpm db:reset       # wipe the database and reseed it
 ```
 
+Every push to `main` and every PR runs typecheck and the tests on GitHub (once with the embedded database and once with a real Postgres). It also fails if someone changes `packages/db/src/schema.ts` without running `pnpm db:generate`. If your PR goes red, click into the check to see what broke.
+
 ## Notes
 
 - All the endpoints and live events are documented in [docs/api.md](docs/api.md), and there are interactive docs at `/docs` while the API is running.

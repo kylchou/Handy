@@ -1,15 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createDb, seed, type DbHandle } from "@handy/db";
+import { type DbHandle } from "@handy/db";
 import { buildApp, type App } from "../src/app";
 import { loadConfig } from "../src/config";
+import { createTestDb } from "./helpers";
 
 let server: App;
 let handle: DbHandle;
 
 beforeAll(async () => {
-  handle = await createDb("pglite://memory");
-  await handle.migrate();
-  await seed(handle.db, () => {});
+  handle = await createTestDb();
   server = await buildApp({
     config: loadConfig({ seedOnStart: false, jwtSecret: "docs-test", aiServiceModule: "", matchingServiceModule: "", docsEnabled: true }),
     dbHandle: handle,

@@ -392,6 +392,8 @@ export class JobService {
     const { job, request } = await this.load(actor, jobId);
     if (request.customerId !== actor.id) throw forbidden("Only the customer can rate this job.");
     if (job.status !== "COMPLETED") throw new ApiError("CONFLICT", "You can rate a job once it's completed.");
+    // Checked up front; the unique index on ratings.job_id is the backstop for two taps at once.
+    if ((await ratingsRepo.byJobs(this.ctx.db, [jobId])).length) throw new ApiError("CONFLICT", "You've already rated this job. Thank you!");
 
     let rating;
     try {
