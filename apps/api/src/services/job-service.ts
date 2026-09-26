@@ -9,8 +9,9 @@ import {
   type RatingDTO,
   type RealtimeEvent,
 } from "@handy/contracts";
-import type { JobRow, ServiceRequestRow } from "@handy/db";
+import type { JobRow, ServiceRequestRow, UserRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
+import { containsSensitiveNumber, detectScamSignals, SCAM_HEADLINES, SCAM_WARNINGS, type ScamSignal } from "../lib/scam";
 import { addDays, formatTime12h, friendlyDate, todayIn, windowsOverlap, zonedDateTimeToDate } from "../lib/time";
 import { categoriesRepo } from "../repositories/categories";
 import { jobMessagesRepo, jobsRepo, ratingsRepo } from "../repositories/jobs";
@@ -40,6 +41,8 @@ const STATUS_TIMESTAMP: Partial<Record<JobStatus, keyof JobRow>> = {
 
 const MAX_ARRIVAL_CODE_ATTEMPTS = 5;
 const HOUR_MS = 60 * 60 * 1000;
+/** How late a worker can be to head out before everyone is told. */
+const NO_SHOW_GRACE_MS = 10 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
 function isUniqueViolation(err: unknown): boolean {
@@ -364,6 +367,65 @@ export class JobService {
     }
   }
 
+  // ---------- No-shows ----------
+
+  /**
+   * Flags jobs where the worker still hasn't tapped "I'm on my way" 10 minutes
+   * after the start time, and tells the customer, their caregivers, the worker,
+   * and every admin. Once per job. Called on an interval.
+   */
+  async checkNoShows(now = new Date()): Promise<number> {
+    const { db, config } = this.ctx;
+    const today = todayIn(config.timezone, now);
+    const candidates = await jobsRepo.awaitingNoShowCheck(db, addDays(today, -1), today);
+    let flagged = 0;
+    for (const { job, request } of candidates) {
+      const start = zonedDateTimeToDate(request.requestedDate, request.requestedStartTime, config.timezone).getTime();
+      if (now.getTime() < start + NO_SHOW_GRACE_MS) continue;
+      if (!(await jobsRepo.claimNoShow(db, job.id, now))) continue;
+      flagged++;
+
+      const [worker, customer, admins, categories] = await Promise.all([
+        usersRepo.findById(db, job.workerId),
+        usersRepo.findById(db, request.customerId),
+        usersRepo.listByRole(db, "ADMIN"),
+        categoriesRepo.list(db),
+      ]);
+      const name = worker?.firstName ?? "Your helper";
+      const service = categories.find((c) => c.id === request.serviceCategoryId)?.name.toLowerCase() ?? "job";
+      const time = formatTime12h(request.requestedStartTime);
+      const customerName = customer ? `${customer.firstName} ${customer.lastName.charAt(0)}.` : "the customer";
+      const data = { jobId: job.id, requestId: request.id };
+
+      await this.notifier.notifyCustomer(
+        request.customerId,
+        "NO_SHOW",
+        `${name} hasn't started heading over yet.`,
+        `Your ${service} was supposed to start at ${time}. We've let our support team know and we're checking on it.`,
+        data,
+        (who) => ({ title: `${name} hasn't started heading to ${who}'s yet.`, body: `It was supposed to start at ${time}. Our support team is checking on it.` }),
+      );
+      await this.notifier.notify(
+        job.workerId,
+        "NO_SHOW",
+        `Your ${service} job for ${customerName} was supposed to start at ${time}.`,
+        `Tap "I'm On My Way" if you're heading there, or cancel so we can find someone else.`,
+        data,
+      );
+      for (const admin of admins) {
+        await this.notifier.notify(
+          admin.id,
+          "NO_SHOW",
+          `Possible no-show: ${worker ? `${worker.firstName} ${worker.lastName}` : "worker"} for ${customerName}`,
+          `${service} at ${time} on ${request.requestedDate}. The worker hasn't marked themselves on the way.`,
+          data,
+        );
+      }
+    }
+    if (flagged) this.ctx.log.warn({ flagged }, "possible no-shows");
+    return flagged;
+  }
+
   // ---------- Chat ----------
 
   async messages(actor: Actor, jobId: string): Promise<JobMessageDTO[]> {
@@ -379,11 +441,49 @@ export class JobService {
     if (job.status === "CANCELLED" || job.status === "COMPLETED") {
       throw new ApiError("CONFLICT", "Messaging is closed for this job.");
     }
-    const row = await jobMessagesRepo.create(this.ctx.db, { jobId, senderId: actor.id, content });
-    const message = toJobMessageDTO(row, (await usersRepo.findById(this.ctx.db, actor.id)) ?? undefined);
+    if (containsSensitiveNumber(content)) {
+      throw new ApiError(
+        "SENSITIVE_INFO",
+        "It looks like that message has a card or Social Security number in it, so we didn't send it. Handy helpers never need that information.",
+      );
+    }
+    // Only the worker's messages are screened: the customer is the one we're protecting.
+    const flags = actor.id === job.workerId ? detectScamSignals(content) : [];
+    const alreadyFlagged = flags.length
+      ? new Set((await jobMessagesRepo.list(this.ctx.db, jobId)).flatMap((m) => m.flags))
+      : new Set<string>();
+
+    const row = await jobMessagesRepo.create(this.ctx.db, { jobId, senderId: actor.id, content, flags });
+    const sender = await usersRepo.findById(this.ctx.db, actor.id);
+    const message = toJobMessageDTO(row, sender ?? undefined);
     const recipient = actor.id === job.workerId ? request.customerId : job.workerId;
     this.notifier.emit([recipient, actor.id], "MESSAGE_RECEIVED", { jobId, message });
+
+    // Tell people once per job per kind of concern, so a pushy scammer doesn't flood anyone.
+    const fresh = flags.filter((f) => !alreadyFlagged.has(f));
+    if (fresh.length && sender) await this.warnAboutScam(job, request, sender, fresh, content);
     return message;
+  }
+
+  private async warnAboutScam(job: JobRow, request: ServiceRequestRow, worker: UserRow, signals: ScamSignal[], content: string) {
+    const { db } = this.ctx;
+    const [customer, admins] = await Promise.all([usersRepo.findById(db, request.customerId), usersRepo.listByRole(db, "ADMIN")]);
+    const first = signals[0]!;
+    const advice = signals.map((s) => SCAM_WARNINGS[s]).join(" ");
+    const data = { jobId: job.id, requestId: request.id, signals };
+
+    await this.notifier.notifyCustomer(
+      request.customerId,
+      "SCAM_WARNING",
+      `Be careful: ${worker.firstName} ${SCAM_HEADLINES[first]("you")}.`,
+      `${advice} We've let our support team know.`,
+      data,
+      (who) => ({ title: `${worker.firstName} ${SCAM_HEADLINES[first](who)} in their job chat.`, body: `${advice} Our support team has been told.` }),
+    );
+    const customerName = customer ? `${customer.firstName} ${customer.lastName.charAt(0)}.` : "a customer";
+    for (const admin of admins) {
+      await this.notifier.notify(admin.id, "SCAM_WARNING", `Flagged chat message from ${worker.firstName} ${worker.lastName}`, `To ${customerName}: "${content}"`, data);
+    }
   }
 
   // ---------- Rating ----------

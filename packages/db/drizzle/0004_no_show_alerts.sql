@@ -1,0 +1,1 @@
+ALTER TABLE "jobs" ADD COLUMN "no_show_alerted_at" timestamp with time zone;

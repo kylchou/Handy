@@ -29,6 +29,20 @@
       "when": 1790397895099,
       "tag": "0003_job_reminders",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790401997214,
+      "tag": "0004_no_show_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790402531232,
+      "tag": "0005_chat_flags",
+      "breakpoints": true
     }
   ]
 }

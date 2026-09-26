@@ -387,6 +387,121 @@ describe("API client", () => {
     });
   });
 
+  describe("no-shows", () => {
+    const login = async (email: string) => {
+      const api = client();
+      await api.auth.login({ email, password: DEMO_PASSWORD });
+      return api;
+    };
+    const noShows = async (api: ApiClient) => (await api.notifications.list()).filter((n) => n.type === "NO_SHOW");
+
+    it("flags a worker who hasn't headed out 10 minutes after the start", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const admin = await login("admin@handy.demo");
+      const date = addDays(todayIn("America/New_York"), 2);
+
+      const book = async (time: string) => {
+        const { conversation } = await margaret.conversations.create();
+        const { request } = await margaret.requests.create({
+          conversationId: conversation.id,
+          serviceCategoryId: "MOVING_ASSISTANCE",
+          description: "Move a bookcase",
+          location: "123 Main Street, Atlanta, GA",
+          requestedDate: date,
+          requestedStartTime: time,
+        });
+        const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+        return james.jobs.acceptOffer(offer.id);
+      };
+      const late = await book("17:00");
+      const onTime = await book("19:00");
+      await james.jobs.updateStatus(onTime.id, "EN_ROUTE");
+
+      const start = (time: string) => zonedDateTimeToDate(date, time, "America/New_York").getTime();
+      const MIN = 60 * 1000;
+
+      // Still inside the grace period.
+      await server.services.jobs.checkNoShows(new Date(start("17:00") + 5 * MIN));
+      expect((await margaret.jobs.get(late.id)).noShowAlertedAt).toBeNull();
+
+      await server.services.jobs.checkNoShows(new Date(start("17:00") + 11 * MIN));
+      expect((await margaret.jobs.get(late.id)).noShowAlertedAt).not.toBeNull();
+      const forJob = (list: Awaited<ReturnType<typeof noShows>>) => list.filter((n) => n.data.jobId === late.id);
+
+      expect(forJob(await noShows(margaret))[0]!.title).toBe("James hasn't started heading over yet.");
+      expect(forJob(await noShows(susan))[0]!.title).toBe("James hasn't started heading to Margaret's yet.");
+      expect(forJob(await noShows(james))[0]!.title).toBe("Your moving help job for Margaret T. was supposed to start at 5 PM.");
+      expect(forJob(await noShows(admin))[0]!.title).toBe("Possible no-show: James Robinson for Margaret T.");
+
+      // Once only, and a worker who's already on the way is never flagged.
+      await server.services.jobs.checkNoShows(new Date(start("19:00") + 30 * MIN));
+      expect(forJob(await noShows(margaret))).toHaveLength(1);
+      expect((await margaret.jobs.get(onTime.id)).noShowAlertedAt).toBeNull();
+    });
+  });
+
+  describe("scam warnings in the job chat", () => {
+    it("flags scammy worker messages, warns the family, and blocks card numbers", async () => {
+      const login = async (email: string) => {
+        const api = client();
+        await api.auth.login({ email, password: DEMO_PASSWORD });
+        return api;
+      };
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const admin = await login("admin@handy.demo");
+      const warnings = async (api: ApiClient) => (await api.notifications.list()).filter((n) => n.type === "SCAM_WARNING");
+
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "MOVING_ASSISTANCE",
+        description: "Move a lamp",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 2),
+        requestedStartTime: "20:00",
+      });
+      const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+      const job = await james.jobs.acceptOffer(offer.id);
+
+      // Normal messages (including a Wi-Fi password question) aren't flagged.
+      for (const text of ["I'll be there in about 10 minutes.", "What's your Wi-Fi password?"]) {
+        expect(await james.jobs.sendMessage(job.id, text)).toMatchObject({ flags: [], warning: null });
+      }
+
+      const venmo = await james.jobs.sendMessage(job.id, "Can you just Venmo me instead? Saves the app fee.");
+      expect(venmo.flags).toEqual(["OFF_PLATFORM_PAYMENT"]);
+      expect(venmo.warning).toBe("Handy helpers are paid through the app. Never pay a helper another way.");
+      expect((await margaret.jobs.messages(job.id)).at(-1)!.warning).toBe(venmo.warning); // delivered, with the warning
+
+      expect((await warnings(margaret))[0]!.title).toBe("Be careful: James asked you to pay outside the app.");
+      expect((await warnings(susan))[0]!.title).toBe("James asked Margaret to pay outside the app in their job chat.");
+      expect((await warnings(admin))[0]).toMatchObject({
+        title: "Flagged chat message from James Robinson",
+        body: 'To Margaret T.: "Can you just Venmo me instead? Saves the app fee."',
+      });
+
+      // Same kind of concern again: flagged, but nobody gets notified twice.
+      expect((await james.jobs.sendMessage(job.id, "seriously just zelle me")).flags).toEqual(["OFF_PLATFORM_PAYMENT"]);
+      expect(await warnings(margaret)).toHaveLength(1);
+      // A new kind of concern does notify.
+      await james.jobs.sendMessage(job.id, "Also what's your card number?");
+      expect((await warnings(margaret))[0]!.title).toBe("Be careful: James asked you for personal or financial information.");
+
+      // Real card or SSN numbers never get sent, from either side.
+      await expect(margaret.jobs.sendMessage(job.id, "ok my card is 4111 1111 1111 1111")).rejects.toMatchObject({
+        status: 422,
+        code: "SENSITIVE_INFO",
+      });
+      expect((await margaret.jobs.messages(job.id)).some((m) => m.content.includes("4111"))).toBe(false);
+      // The customer's own messages aren't screened for keywords.
+      expect((await margaret.jobs.sendMessage(job.id, "No thanks, I'll pay in the app. My grandson uses Venmo though!")).flags).toEqual([]);
+    });
+  });
+
   it("resets the demo data without logging anyone out", async () => {
     const admin = client();
     const margaret = client();

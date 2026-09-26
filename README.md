@@ -23,8 +23,9 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - If a worker cancels, the job goes back out to other workers
 - Anything that sounds like an emergency is blocked and the user is told to call 911
 - Reminders the day before and an hour before each job, for both the customer and the worker
+- No-show alerts: if a worker hasn't headed out 10 minutes after the start time, the customer, their family, and admins all get told
 - Workers only see a general area until they accept, then they get the full address
-- Customer and worker chat, so nobody has to share phone numbers
+- Customer and worker chat, so nobody has to share phone numbers. Worker messages that look like a scam (pay me on Venmo, gift cards, asking for your card number) get flagged and the customer and their family are warned, and nobody can send a card or Social Security number
 - Caregiver mode: family members can link to someone with an invite code, see their jobs, and get updates when a worker arrives or finishes. They also get alerted if the person describes an emergency to the AI.
 - Live updates over SSE or WebSockets, plus saved notifications. If the connection drops, it catches up on what it missed when it reconnects.
 - Ratings, job history, worker earnings, and admin stats

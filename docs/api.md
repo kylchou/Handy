@@ -121,7 +121,7 @@ Request statuses: `SEARCHING → MATCHED → COMPLETED`, or `CANCELLED`, or `EXP
 | `GET /jobs/:jobId` | job's customer/worker, admin | Job + request + worker profile + customer name + distance + rating + `arrivalCode` (customer and admin only, always null for the worker) |
 | `PATCH /jobs/:jobId/status` | see below | `{ status, reason?, arrivalCode? }` |
 | `GET /jobs/:jobId/messages` | job's customer/worker, admin | |
-| `POST /jobs/:jobId/messages` | job's customer/worker | `{ content }`. Closed after the job is done or cancelled. |
+| `POST /jobs/:jobId/messages` | job's customer/worker | `{ content }`. Closed after the job is done or cancelled. Messages with a card or Social Security number are refused with 422 `SENSITIVE_INFO`. |
 | `POST /jobs/:jobId/rating` | job's customer | `{ score: 1-5, comment? }`. Once per job, after it's completed. |
 
 Job status order (can't skip steps):
@@ -135,6 +135,14 @@ ACCEPTED ─► EN_ROUTE ─► ARRIVED ─► IN_PROGRESS ─► COMPLETED     
 - Customer can cancel while `ACCEPTED` or `EN_ROUTE`.
 - Worker or admin can cancel any time before `IN_PROGRESS`.
 - If the worker cancels, the request goes back to `SEARCHING` and gets sent to other workers.
+
+**Scam warnings in the chat.** Worker messages that look like a scam still get delivered, but they come with `flags` and a plain-language `warning` to show under the message:
+
+- Asking to be paid outside the app (Venmo, Zelle, Cash App, "pay me directly", cash only)
+- Asking for gift cards
+- Asking for card, bank, Social Security, or Medicare details, or a password (Wi-Fi passwords are fine)
+
+The first time each kind shows up in a job, the customer gets a `SCAM_WARNING` notification ("Be careful: James asked you to pay outside the app."), and so do their caregivers and every admin. Darsh: show `warning` under the message in red or yellow.
 
 **Arrival code.** When a worker accepts, the customer gets a 4-digit `arrivalCode`. It's on their job and in the "James is helping you" notification. When the worker gets there, the customer reads it to them, and the worker has to send it to mark the job `ARRIVED` (`{ status: "ARRIVED", arrivalCode: "4821" }`, or `api.jobs.arrive(jobId, code)`). This proves the right person is at the door.
 
@@ -194,6 +202,8 @@ Saved messages like "James is on the way." so they're still there after a refres
 - About an hour before: the customer gets "James is coming in about an hour." and the worker gets a heads up. Caregivers don't get this one.
 
 Each reminder only goes out once. It's skipped if the worker accepted after that point, since the "James is helping you" notification already covered it.
+
+**No-shows** (type `NO_SHOW`): if a job is still `ACCEPTED` 10 minutes after its start time (the worker never tapped "I'm On My Way"), the customer gets "James hasn't started heading over yet.", their caregivers get told, the worker gets a nudge to head out or cancel, and every admin gets "Possible no-show: ...". It only happens once per job. The job's `noShowAlertedAt` gets set, so the admin dashboard can highlight it.
 
 | Endpoint | Notes |
 | --- | --- |

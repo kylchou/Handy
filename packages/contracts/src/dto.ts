@@ -197,6 +197,8 @@ export interface JobDTO {
   startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
+  /** Set when the worker hadn't headed out 10 minutes after the start time. Admins should follow up. */
+  noShowAlertedAt: string | null;
   finalPriceCents: number | null;
   createdAt: string;
   updatedAt: string;
@@ -253,6 +255,10 @@ export interface JobMessageDTO {
   senderRole: UserRole;
   senderName: string;
   content: string;
+  /** Scam signals found in a worker's message: OFF_PLATFORM_PAYMENT, GIFT_CARDS, SENSITIVE_INFO. */
+  flags: string[];
+  /** Plain-language warning to show under the message when it's flagged, otherwise null. */
+  warning: string | null;
   createdAt: string;
 }
 
