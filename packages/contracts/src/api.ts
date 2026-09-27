@@ -61,6 +61,7 @@ export type ApiErrorCode =
   | "INVALID_ARRIVAL_CODE"
   | "TOO_MANY_ATTEMPTS"
   | "INVALID_INVITE"
+  | "PRICE_CHANGED"
   | "RATE_LIMITED"
   | "SENSITIVE_INFO"
   | "INTERNAL_ERROR";
@@ -252,6 +253,12 @@ export const createServiceRequestSchema = z.object({
   preferredWorkerId: z.string().uuid().nullable().optional(),
   /** Make it repeat on the same day and time. */
   repeat: z.enum(["WEEKLY", "BIWEEKLY"]).nullable().optional(),
+  /**
+   * The total the customer agreed to on the confirmation card. If the price
+   * works out different when submitting, it's refused with PRICE_CHANGED so
+   * they never pay something they didn't see.
+   */
+  agreedTotalCents: z.number().int().nonnegative().optional(),
 });
 export type CreateServiceRequestBody = z.infer<typeof createServiceRequestSchema>;
 

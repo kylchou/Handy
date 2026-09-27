@@ -105,13 +105,15 @@ If `emergency` isn't null, show it clearly. It tells the user to call 911, and t
 
 | Endpoint | Who | Notes |
 | --- | --- | --- |
-| `POST /requests` | customer | The Confirm Request button. Send `{ conversationId, ...overrides }`. Any fields you include override the draft (that's how Edit works). Creates the request and sends it to matched workers. Returns 422 `REQUEST_INCOMPLETE` (with `details.missingInformation`) or 422 `POTENTIAL_EMERGENCY` if it can't go through. |
+| `POST /requests` | customer | The Confirm Request button. Send `{ conversationId, ...overrides }`. Any fields you include override the draft (that's how Edit works). Creates the request and sends it to matched workers. Returns 422 `REQUEST_INCOMPLETE` (with `details.missingInformation`) or 422 `POTENTIAL_EMERGENCY` if it can't go through. Send `agreedTotalCents` (the total they agreed to on the card): if the price works out different, it's 409 `PRICE_CHANGED` with the new breakdown in `details.priceQuote`, so they can look it over again. |
 | `GET /requests` | customer, admin | Customers get their own, admins get all. Optional `?status=`. |
 | `GET /requests/:id` | customer, assigned worker, admin | Includes `pendingOfferCount` and `jobId` once someone accepts. |
 | `POST /requests/:id/cancel` | customer, admin | Only while `SEARCHING` |
 | `GET /requests/:id/matches` | customer, admin | Ranked workers with scores and reasons. Mostly for the admin dashboard. |
 
 **Where the job is.** If the request's `location` is the customer's home address, we use the coordinates on their profile. Anywhere else gets looked up with OpenStreetMap, so distances and service radius checks use the real place. Saving an address on a customer or worker profile (or at signup) fills in `latitude`/`longitude` the same way, so you don't need to send them. Set `GEOCODER_CONTACT` in `.env` to an email or URL, their usage policy asks for it.
+
+**Prices.** Every conversation has a `priceQuote` once the kind of service is known: `{ servicePriceCents, urgentSurchargeCents, platformFeeCents, totalCents }`. The service price is the category's base price, plus $10 if it's urgent, and it's what the worker earns. The customer pays that plus Handy's fee (`PLATFORM_FEE_CENTS`, $5 by default). The confirmation card should show the breakdown and have them agree to the total before confirming. Requests have `totalPriceCents` (what the customer pays), history's `priceCents` is the same total, and job offers show the worker `estimatedPayCents` with `urgentBonusCents` broken out.
 
 **Repeating requests.** Send `repeat: "WEEKLY"` or `repeat: "BIWEEKLY"` with `POST /requests` (or the AI sets it when they say "every Saturday" or "every other week"). That request becomes the first visit, and each visit after that gets posted to workers 3 days ahead with the same day, time, and details. Whoever did the last visit and got 4 or 5 stars is asked first next time, so it tends to be the same helper each week. Visits have a `scheduleId`. `GET /customers/me/schedules` lists them and `DELETE /customers/me/schedules/:id` stops one (already-posted visits stay booked). Cancelling one visit doesn't stop the rest.
 
@@ -228,7 +230,7 @@ Each reminder only goes out once. It's skipped if the worker accepted after that
 
 `POST /admin/demo/reset` puts everything back to the starting demo data: all requests, jobs, chats, and notifications are deleted, accounts made after seeding are removed, and the demo workers' ratings and stats go back to normal. The demo accounts keep the same ids, so nobody gets logged out. Everyone connected gets a `DEMO_RESET` event so the apps can reload. It's turned off when `NODE_ENV=production` unless `ALLOW_DEMO_RESET=true`.
 
-**Demo autopilot.** `PUT /admin/demo/autopilot` with `{ "enabled": true, "stepSeconds": 8 }` turns on a fake worker, so one person can show the whole flow from the customer app without a second phone. While it's on, any new request gets accepted by the best matched worker after one step, then goes on the way, arrived, started, and done, one step at a time. It uses the same calls a real worker would (it even enters the arrival code), so the customer app sees the normal live updates and notifications. `stepSeconds` can be 2 to 60 and defaults to 8. Add `"hold": true` to have it accept jobs and then wait at "accepted" until you send `{ "enabled": true, "hold": false }`, so there's time to show the job page. `pnpm demo autopilot on` and `pnpm demo go` do this for you. Requests made before you turned it on are left alone. `GET /admin/demo/autopilot` shows whether it's on and which jobs it's moving along. It turns off if the server restarts, and it's blocked in production the same way demo reset is.
+**Demo autopilot (testing only, not part of the demo).** `PUT /admin/demo/autopilot` with `{ "enabled": true, "stepSeconds": 8 }` turns on a fake worker, so one person can show the whole flow from the customer app without a second phone. While it's on, any new request gets accepted by the best matched worker after one step, then goes on the way, arrived, started, and done, one step at a time. It uses the same calls a real worker would (it even enters the arrival code), so the customer app sees the normal live updates and notifications. `stepSeconds` can be 2 to 60 and defaults to 8. Add `"hold": true` to have it accept jobs and then wait at "accepted" until you send `{ "enabled": true, "hold": false }`, so there's time to show the job page. `pnpm demo autopilot on` and `pnpm demo go` do this for you. Requests made before you turned it on are left alone. `GET /admin/demo/autopilot` shows whether it's on and which jobs it's moving along. It turns off if the server restarts, and it's blocked in production the same way demo reset is.
 
 From the API client: `api.admin.setAutopilot({ enabled: true })`.
 
@@ -290,5 +292,5 @@ The backend also has its own emergency check on every message and request, separ
 ## Known limitations
 
 - Address lookup uses OpenStreetMap's free service, which only allows 1 lookup per second. That's fine for a demo but a real launch would want a paid geocoder. If a lookup fails, the job falls back to the customer's home location.
-- Payments are fake. Price is the category's base price, +$10 if urgent. Platform fee is `PLATFORM_FEE_CENTS`.
+- Payments are fake. The price flow is real (quote, agree, locked in), but nothing is charged.
 - Live updates, logout tracking, and the demo autopilot are stored in memory, so it only works with one API server running.

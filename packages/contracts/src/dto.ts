@@ -177,6 +177,18 @@ export interface RecurringScheduleDTO {
   createdAt: string;
 }
 
+/** What the customer will pay, shown on the confirmation card before they agree. */
+export interface PriceQuoteDTO {
+  /** The service's price, which is what the worker earns. */
+  servicePriceCents: number;
+  /** Extra for urgent requests, already included in servicePriceCents. 0 if not urgent. */
+  urgentSurchargeCents: number;
+  /** Handy's fee. */
+  platformFeeCents: number;
+  /** What the customer pays: service price plus the fee. */
+  totalCents: number;
+}
+
 export interface ConversationDTO {
   id: string;
   customerId: string;
@@ -185,6 +197,8 @@ export interface ConversationDTO {
   missingInformation: string[];
   readyToSubmit: boolean;
   safetyStatus: SafetyStatus;
+  /** The price for what's in the draft so far, or null until the kind of service is known. */
+  priceQuote: PriceQuoteDTO | null;
   /** Set once a ServiceRequest has been created from this conversation. */
   serviceRequestId: string | null;
   createdAt: string;
@@ -225,6 +239,8 @@ export interface ServiceRequestDTO {
   status: ServiceRequestStatus;
   estimatedPriceCents: number;
   platformFeeCents: number;
+  /** What the customer pays: estimatedPriceCents plus platformFeeCents. */
+  totalPriceCents: number;
   /** Number of workers the request is currently offered to (pending offers). */
   pendingOfferCount: number;
   /** The active job, once a worker has accepted. */
@@ -288,7 +304,10 @@ export interface JobOfferDTO {
   requestedEndTime: string;
   urgency: Urgency;
   specialRequirements: string[];
+  /** What the worker earns if they take it. The customer agreed to this price when they booked. */
   estimatedPayCents: number;
+  /** The part of estimatedPayCents that's extra because the job is urgent. 0 otherwise. */
+  urgentBonusCents: number;
   customer: CustomerPublicDTO;
   createdAt: string;
   /** After this the offer can't be accepted and goes to other workers. */
@@ -331,6 +350,7 @@ export interface CustomerHistoryItemDTO {
   requestStatus: ServiceRequestStatus;
   jobStatus: JobStatus | null;
   worker: WorkerPublicDTO | null;
+  /** What the customer pays, Handy's fee included. */
   priceCents: number;
   rating: number | null;
   createdAt: string;

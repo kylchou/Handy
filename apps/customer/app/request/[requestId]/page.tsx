@@ -6,7 +6,7 @@ import Link from "next/link";
 import NavBar from "@/components/NavBar";
 import BigButton from "@/components/BigButton";
 import { api, friendlyError, useRequireLogin } from "@/lib/api";
-import { formatDate, formatTime, type ServiceRequestDTO } from "@/lib/types";
+import { formatDate, formatPrice, formatTime, type ServiceRequestDTO } from "@/lib/types";
 
 export default function RequestStatusPage() {
   useRequireLogin();
@@ -89,6 +89,9 @@ export default function RequestStatusPage() {
             We're finding a qualified, available worker near you for{" "}
             {formatDate(request.requestedDate)} at {formatTime(request.requestedStartTime)}.
             {request.pendingOfferCount > 0 && ` We've asked ${request.pendingOfferCount} ${request.pendingOfferCount === 1 ? "person" : "people"} so far.`}
+          </p>
+          <p className="text-lg text-ink-soft">
+            Price you agreed to: <strong className="text-ink">{formatPrice(request.totalPriceCents)}</strong>
           </p>
           <div className="w-full max-w-sm">
             <BigButton variant="secondary" onClick={handleCancel} disabled={cancelling}>

@@ -3,12 +3,14 @@ import type {
   ConversationDetailResponse,
   ConversationSummaryDTO,
   CreateConversationResponse,
+  PriceQuoteDTO,
   SendConversationMessageResponse,
   ServiceRequestDraft,
 } from "@handy/contracts";
 import { REQUIRED_REQUEST_FIELDS } from "@handy/contracts";
 import type { ConversationRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
+import { quotePrice } from "../lib/pricing";
 import { EMERGENCY_GUIDANCE, detectEmergency } from "../lib/safety";
 import { todayIn } from "../lib/time";
 import { categoriesRepo } from "../repositories/categories";
@@ -66,7 +68,10 @@ export class ConversationService {
       conversationsRepo.messages(this.ctx.db, conv.id),
       requestsRepo.getByConversation(this.ctx.db, conv.id),
     ]);
-    return { conversation: toConversationDTO(conv, request?.id ?? null), messages: messages.map(toConversationMessageDTO) };
+    return {
+      conversation: toConversationDTO(conv, request?.id ?? null, await this.quoteFor(conv.draft)),
+      messages: messages.map(toConversationMessageDTO),
+    };
   }
 
   async sendMessage(actor: Actor, conversationId: string, content: string): Promise<SendConversationMessageResponse> {
@@ -146,9 +151,16 @@ export class ConversationService {
     return {
       userMessage: toConversationMessageDTO(userMessage),
       assistantMessage: toConversationMessageDTO(assistantMessage),
-      conversation: toConversationDTO(updated, null),
+      conversation: toConversationDTO(updated, null, await this.quoteFor(updated.draft)),
       emergency: ai.safetyStatus === "POTENTIAL_EMERGENCY" ? EMERGENCY_GUIDANCE : null,
     };
+  }
+
+  /** The price for the draft so far, once we know what kind of service it is. */
+  private async quoteFor(draft: ServiceRequestDraft): Promise<PriceQuoteDTO | null> {
+    if (!draft.serviceCategoryId) return null;
+    const category = await categoriesRepo.get(this.ctx.db, draft.serviceCategoryId);
+    return category ? quotePrice(category.basePriceCents, draft.urgency, this.ctx.config.platformFeeCents) : null;
   }
 
   /** The customer's past workers (not ones they rated poorly), most recent first. */

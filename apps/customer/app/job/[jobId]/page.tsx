@@ -7,7 +7,7 @@ import BigButton from "@/components/BigButton";
 import WorkerCard from "@/components/WorkerCard";
 import JobStatusTracker from "@/components/JobStatusTracker";
 import { api, friendlyError, useRequireLogin } from "@/lib/api";
-import { formatDate, formatTime, type JobDetailDTO, type JobMessageDTO } from "@/lib/types";
+import { formatDate, formatPrice, formatTime, type JobDetailDTO, type JobMessageDTO } from "@/lib/types";
 
 const STATUS_HEADLINE: Record<string, string> = {
   SEARCHING: "Looking for someone to help…",
@@ -126,6 +126,11 @@ export default function JobPage() {
 
       <p className="-mt-2 text-lg text-ink-soft">
         {formatDate(job.request.requestedDate)} at {formatTime(job.request.requestedStartTime)}
+      </p>
+      <p className="-mt-4 text-lg text-ink-soft">
+        {job.status === "COMPLETED" ? "You paid " : "Price: "}
+        <strong className="text-ink">{formatPrice(job.request.totalPriceCents)}</strong>
+        {job.status !== "COMPLETED" && job.status !== "CANCELLED" && ", paid through Handy once the job is done"}
       </p>
 
       {showCode && (
