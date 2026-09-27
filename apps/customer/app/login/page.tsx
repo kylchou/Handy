@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import BigButton from "@/components/BigButton";
-import { api, friendlyError } from "@/lib/api";
+import { api, friendlyError, ROLE_KEY } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,7 +20,9 @@ export default function LoginPage() {
     try {
       const { user } = await api.auth.login({ email, password });
       window.localStorage.setItem("user_first_name", user.firstName);
-      router.push("/chat");
+      window.localStorage.setItem(ROLE_KEY, user.role);
+      // Family members who help someone get their own view.
+      router.push(user.role === "CAREGIVER" ? "/family" : "/chat");
     } catch (err) {
       setError(friendlyError(err, "We couldn't log you in. Please check your email and password."));
     } finally {

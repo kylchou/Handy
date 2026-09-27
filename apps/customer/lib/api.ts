@@ -14,6 +14,10 @@ import { applyDisplay, displayFrom } from "./display";
  */
 
 const TOKEN_KEY = "auth_token";
+/** "CUSTOMER" or "CAREGIVER", saved at login so each page knows which view to show. */
+export const ROLE_KEY = "user_role";
+
+const isCaregiver = () => typeof window !== "undefined" && window.localStorage.getItem(ROLE_KEY) === "CAREGIVER";
 
 /** Display settings are loaded from the profile once per login, so ones saved on another device apply here too. */
 let displaySynced = false;
@@ -30,7 +34,10 @@ export const api = createApiClient({
     displaySynced = false;
     if (typeof window === "undefined") return;
     if (token) window.localStorage.setItem(TOKEN_KEY, token);
-    else window.localStorage.removeItem(TOKEN_KEY);
+    else {
+      window.localStorage.removeItem(TOKEN_KEY);
+      window.localStorage.removeItem(ROLE_KEY);
+    }
   },
   // Logged out or the session ran out: back to the login screen.
   onUnauthorized: () => {
@@ -40,12 +47,16 @@ export const api = createApiClient({
   },
 });
 
-/** Sends people to the login screen if they aren't logged in yet. */
+/** Sends people to the login screen if they aren't logged in yet, and family members to their own view. */
 export function useRequireLogin() {
   const router = useRouter();
   useEffect(() => {
     if (!api.getToken()) {
       router.replace("/login");
+      return;
+    }
+    if (isCaregiver()) {
+      router.replace("/family");
       return;
     }
     if (displaySynced) return;
@@ -56,6 +67,15 @@ export function useRequireLogin() {
       .catch(() => {
         displaySynced = false;
       });
+  }, [router]);
+}
+
+/** For the family view: logged in as a caregiver, or sent where they belong. */
+export function useRequireCaregiver() {
+  const router = useRouter();
+  useEffect(() => {
+    if (!api.getToken()) router.replace("/login");
+    else if (!isCaregiver()) router.replace("/chat");
   }, [router]);
 }
 

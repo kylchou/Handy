@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ApiRequestError, createApiClient, type ApiClient, type RealtimeEvent } from "@handy/contracts";
 import { eq } from "drizzle-orm";
 import { DEMO_PASSWORD, jobs, type DbHandle } from "@handy/db";
@@ -291,6 +291,35 @@ describe("API client", () => {
       // Not every step, just the important ones.
       expect(susanTitles.some((t) => t.includes("on the way"))).toBe(false);
       expect((await susan.caregivers.people())[0]!.recentHistory.find((h) => h.requestId === request.id)?.jobStatus).toBe("COMPLETED");
+    });
+
+    it("sends the caregiver live status updates, but not chat messages", async () => {
+      const margaret = await login("margaret@handy.demo");
+      const james = await login("james@handy.demo");
+      const susan = await login("susan@handy.demo");
+      const events: RealtimeEvent[] = [];
+      await new Promise<void>((resolve) => {
+        const stop = susan.realtime.subscribe((e) => events.push(e), { transport: "ws", onOpen: resolve });
+        afterAll(stop);
+      });
+
+      const { conversation } = await margaret.conversations.create();
+      const { request } = await margaret.requests.create({
+        conversationId: conversation.id,
+        serviceCategoryId: "MOVING_ASSISTANCE",
+        description: "Move a lamp",
+        location: "123 Main Street, Atlanta, GA",
+        requestedDate: addDays(todayIn("America/New_York"), 4),
+        requestedStartTime: "10:00",
+      });
+      const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+      const job = await james.jobs.acceptOffer(offer.id);
+      await james.jobs.sendMessage(job.id, "See you soon!");
+      await james.jobs.updateStatus(job.id, "EN_ROUTE");
+
+      await vi.waitFor(() => expect(events.map((e) => e.type)).toEqual(expect.arrayContaining(["REQUEST_CREATED", "JOB_ACCEPTED", "WORKER_EN_ROUTE"])));
+      expect(events.some((e) => e.type === "MESSAGE_RECEIVED")).toBe(false);
+      expect(events.some((e) => e.type === "JOB_OFFERED")).toBe(false);
     });
 
     it("alerts caregivers once when the customer describes an emergency", async () => {
