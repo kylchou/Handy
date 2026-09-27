@@ -1,95 +1,99 @@
 # Demo script
 
-About 3 minutes. One person drives the customer app and one person talks. The autopilot plays the worker, so you don't need a second phone.
+About 4 minutes. The point is to show Handy connecting real people, so each person gets their own screen:
+
+| Screen | Who's on it | Link | Log in as |
+| --- | --- | --- | --- |
+| Phone 1 | Margaret, the customer | https://handycustomer-production.up.railway.app | `margaret@handy.demo` |
+| Phone 2 | James, the worker | https://handyworker-production.up.railway.app | `james@handy.demo` |
+| Laptop, tab 1 | Susan, Margaret's daughter | https://handycustomer-production.up.railway.app | `susan@handy.demo` |
+| Laptop, tab 2 | The Handy team | https://handy-production-8846.up.railway.app | `admin@handy.demo` |
+
+Password for all of them is `password123`. Susan and Margaret use the same app, so put Susan in a different browser (or a private window) on the laptop.
+
+Two people run it: one holds Margaret's phone and talks, the other plays James.
 
 ## Before judging
 
-- [ ] `.env` has `MODEL_API_KEY` set (the Muse key), or the chat falls back to the simpler built-in assistant
-- [ ] Start the backend: `pnpm dev:api`. The log should say `Loaded @handy/ai`
-- [ ] Start the customer app: `pnpm dev:customer`, and open http://localhost:3000 (or the hosted URLs if Arjun has them up)
-- [ ] `pnpm demo reset` so everything starts clean
-- [ ] `pnpm demo autopilot on 6` (a fake worker accepts new requests and waits until you say go, then moves 6 seconds per step)
-- [ ] Log in as `margaret@handy.demo` / `password123`
-- [ ] Phone or browser zoomed so judges can read it. Ringer off
-- [ ] If it's hosted: open `/health` on the API a few minutes early to wake it up
-
-`pnpm demo status` tells you if the API is up and the autopilot is on. The admin dashboard (log in as `admin@handy.demo`) has the same controls as buttons: autopilot on, Go, and reset.
+- [ ] Open `https://handyapi-production.up.railway.app/health` a few minutes early. It should say `{"ok":true,...}`
+- [ ] On the admin dashboard, click **Reset demo data** so everything starts clean
+- [ ] Log into all four screens, and refresh them after the reset
+- [ ] Both phones: brightness up, ringer off, zoomed so judges can read them
+- [ ] James's phone is on **Find Jobs** and says "Taking jobs"
 
 ## The demo
 
 **1. The problem (15 seconds, before touching anything)**
 
-> A lot of older adults need small bits of help: moving something heavy, a ride, groceries. Apps for that are full of forms and categories. With Handy you just say what you need.
+> A lot of older adults need small bits of help: moving something heavy, a ride, groceries. Apps for that are full of forms and categories. With Handy you just say what you need, and we connect you with someone nearby.
 
-**2. Ask for help**
+**2. Margaret asks for help** (Phone 1)
 
-Type (or tap the mic and say):
+Type, or tap the mic and say:
 
 > I need help moving a couch from my garage into the living room tomorrow at 2pm at my house
 
-The AI takes about 5 seconds, so say this while it thinks: *"There's no form and no category to pick. The AI figures out it's moving help, the day, the time, and that 'my house' means her address on file."*
+The AI takes about 5 seconds. While it thinks: *"There's no form and no category to pick. The AI figures out it's moving help, the day, the time, and that 'my house' means her address on file."*
 
-When it asks to confirm, say *"Yes, that's right"*. This reply takes longer, around 10 to 15 seconds, then the summary card shows up.
+When it asks to confirm, say *"Yes, that's right"*. That reply takes 10 to 15 seconds, then the summary card shows up.
 
-**3. Confirm**
+**3. She sees the price and agrees to it** (Phone 1)
 
-Tap **Confirm Request**. Say: *"It goes to the best nearby workers who are qualified, verified, and free at that time. It weighs distance, rating, and experience."*
+Point at the card: what, when, where, and the **Cost** section ($35 for moving help plus the $5 Handy fee, $40 total). *"Before anything is sent, she sees exactly what she'll pay, and she has to agree to it."* Tick the box, then tap **Confirm Request**.
 
-After about 6 seconds James accepts, and the screen switches by itself. The job stays at "accepted" until you run `pnpm demo go`, so take your time on the next two steps.
+**4. James gets the job** (Phone 2)
 
-**4. The job page**
+The offer pops up on James's phone right away, with what he'll earn. Tap **View Job**: *"James sees what she needs, roughly where, and exactly what he'll make, before he says yes. He doesn't see her address until he accepts."* Tap **Accept for $35**.
 
-Point at:
-- **James's card**: rating, jobs done, 2.4 miles away
-- **The arrival code**: *"When James gets to the door, Margaret reads him this code. He can't mark himself arrived without it, so she knows it's really him."*
+Margaret's phone switches to the job page by itself.
 
-Type a message: *"The couch is the blue one by the door."*
+**5. Her family knows too** (Laptop, Susan's tab)
 
-**5. The scam warning**
+Turn the laptop toward the judges. Margaret's job is on Susan's screen, with an alert that James will help her. *"Her daughter sees what's going on without having to call."*
 
-In a terminal, run `pnpm demo scam`. James's next message asks to be paid on Venmo, and a red warning shows up under it. Say: *"Scams targeting seniors are a real problem. If a worker asks for Venmo, gift cards, or a card number, we flag it and warn her. Her family gets told too."*
+**6. Staying safe** (both phones)
 
-**6. Live status**
+On Margaret's phone, point at the **arrival code**: *"When James gets to the door, she reads him this code. He can't mark himself arrived without it, so she knows it's really him."*
 
-In the terminal, run `pnpm demo go`. The tracker moves by itself every 6 seconds: on the way, arrived, working, done. Say: *"That's live, no refreshing."*
+On James's phone, send her a message: *"Before I come over, can you send $40 on Venmo for supplies?"* A red warning shows up under it on Margaret's phone and on Susan's screen. *"Scams targeting seniors are a real problem. If a worker asks to be paid outside the app, we warn her and her family."*
 
-**7. Rate and book again**
+**7. The job, live** (Phone 2, then Phone 1)
 
-Give 5 stars. Go to **My Services** and point at **Book James again**: *"Next time she can just ask for James, and he gets asked first."*
+James taps **I'm On My Way**, then **I've Arrived** and types the code Margaret reads out, then **Start Job**, then **Complete Job**. Margaret's tracker moves with each tap, and Susan gets the arrived and finished alerts. *"That's all live, no refreshing."*
 
-**8. Safety (if there's time)**
+**8. Rate and book again** (Phone 1)
 
-Go to **Get Help** and type *"I fell and I can't get up"*. The emergency card with a **Call 911** button shows up right away. Say: *"Emergencies never go to a worker. We catch them before the AI even sees the message, and her family is alerted."*
+Give 5 stars. James sees the rating on his phone. On Margaret's phone, go to **My Services** and point at **Book James again**: *"Next time she can just ask for James, and he gets asked first."*
 
-**9. Family view (if there's time, needs a second window)**
+**9. Behind the scenes** (Laptop, admin tab, if there's time)
 
-Before the demo, log into the customer app in a second browser window (or a phone) as `susan@handy.demo`, Margaret's daughter. During the demo, turn that screen toward the judges at any point: the job shows up there live, and so do alerts for the arrival, the scam warning, and the emergency. Say: *"Her daughter sees what's going on without having to call, and gets warned if something looks wrong."*
+Show the dashboard's live activity feed, which logged everything that just happened. Open **Requests** and click **See matches** on the couch job: *"This is how we picked James: qualified, available, close by, and highly rated."*
+
+**10. Emergencies** (Phone 1, if there's time)
+
+Go to **Get Help** and type *"I fell and I can't get up"*. The emergency card with a **Call 911** button shows up right away, and Susan gets an alert. *"Emergencies never go to a worker. We catch them before the AI even sees the message, and her family is told."*
 
 ## Between judges
 
-```
-pnpm demo reset
-```
-
-Then refresh the customer app. Nobody gets logged out, the autopilot stays on, and the next job will wait for `pnpm demo go` again.
+On the admin dashboard, click **Reset demo data**, then refresh the other three screens. Nobody gets logged out.
 
 ## If something goes wrong
 
 | Problem | Fix |
 | --- | --- |
 | The AI is slow or not answering | Keep talking. After 45 seconds the backend answers with its built-in assistant, which handles the couch example fine |
-| "Can't reach the server" | The API stopped. Run `pnpm dev:api` again, then `pnpm demo autopilot on 6` (the autopilot turns off when the API restarts) |
-| Nobody accepts | `pnpm demo status`. The autopilot is probably off |
-| The job is stuck on "You're all set" | That's the hold. Run `pnpm demo go` |
-| `pnpm demo scam` says there's no active job | The job already finished. Do it before `pnpm demo go` next time |
-| The screen looks stuck | Refresh. Everything's saved on the backend |
-| Everything's weird | `pnpm demo reset`, refresh, log in again |
+| James never gets the offer | Check James's phone says "Taking jobs" and not "Off" |
+| A screen looks stuck | Refresh it. Everything's saved on the backend |
+| "Can't reach the server" | Open the `/health` link above. If it doesn't load, check the API on Railway |
+| Everything's weird | Reset demo data, then refresh all four screens |
 
 ## Questions judges might ask
 
 - **How does matching work?** Hard filters first (right skills, verified, in range, free at that time, not double-booked), then a score: 30% qualification, 25% availability, 20% distance, 15% rating, 10% experience. Urgent jobs weigh distance more. People who helped her before and got a good rating get a boost.
+- **How does pricing work?** Each kind of help has a set price, plus $10 if it's urgent. Handy adds a $5 fee. The customer agrees to the total before anything is sent, and the worker sees their share before accepting.
 - **What if the AI gets something wrong?** She sees a summary card and has to confirm before anything is sent. She can tap Edit and fix it by talking.
-- **Privacy?** Workers only see the general area until they accept, then the full address. Nobody's phone number is shared. Chat is in the app.
-- **What if nobody accepts?** It asks a few more people every couple of minutes. If the time passes with nobody, it tells her and suggests picking another time.
+- **Privacy?** Workers only see the general area until they accept, then the full address. Nobody's phone number is shared. Chat stays in the app.
+- **What if nobody accepts?** It asks more people every couple of minutes. If the time passes with nobody, it tells her and suggests another time.
+- **How do workers get approved?** New workers sign up, pick their skills and hours, and can't get jobs until the Handy team verifies them on the admin dashboard.
 - **Can family help?** Yes. She gives a family member an invite code (Settings, Invite a Family Member). They see her jobs and get alerts for arrivals, emergencies, and scam warnings.
-- **Payments?** Faked for the hackathon. The price is set by the type of job, with a small platform fee.
+- **Payments?** Faked for the hackathon. The price flow is real; the charge isn't.

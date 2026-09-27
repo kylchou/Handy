@@ -12,7 +12,7 @@ pnpm dev:api        # backend on http://localhost:4000
 pnpm dev:customer   # this app on http://localhost:3000
 ```
 
-Log in as `margaret@handy.demo` / `password123`. No worker app handy? Log in as `admin@handy.demo` on http://localhost:4000/docs and turn on the demo autopilot (`PUT /admin/demo/autopilot`), and it'll play the worker's side for you.
+Log in as `margaret@handy.demo` / `password123`. To see the other side, run the worker app (`pnpm dev:worker`) and log in as `james@handy.demo`.
 
 If the backend is somewhere else (like a hosted one), copy `.env.example` to `.env.local` and set `NEXT_PUBLIC_API_URL`.
 
