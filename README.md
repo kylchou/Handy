@@ -77,7 +77,7 @@ Password for all of them is `password123`.
 | `apps/customer`, `packages/ui` | Darsh |
 | `apps/api`, `packages/contracts`, `packages/db` | Kyler |
 | `services/ai`, `services/matching` | Aditya |
-| `apps/worker`, `apps/admin`, `infrastructure` | Arjun planned the screens and how jobs are shown to workers, Kyler built them |
+| `apps/worker`, `apps/admin`, `infrastructure` | Arjun planned the hosting setup, the screens, and how jobs are shown to workers. Kyler built them |
 
 Try not to edit someone else's folder without checking with them first so we don't get merge conflicts. If you need to change a root file (`package.json`, `pnpm-workspace.yaml`, `.env.example`), let Kyler know.
 
@@ -100,7 +100,7 @@ Every push to `main` and every PR runs typecheck and the tests on GitHub (once w
 
 - All the endpoints and live events are documented in [docs/api.md](docs/api.md), and there are interactive docs at `/docs` while the API is running.
 - The demo script, checklist, and what to do if something breaks are in [docs/demo.md](docs/demo.md).
-- To put the API online (Render, Railway, Fly, or anywhere with Docker), see [docs/deploy.md](docs/deploy.md).
+- To put everything online (we use Railway), see [docs/deploy.md](docs/deploy.md). The Dockerfiles are in `infrastructure/`.
 - Between demo runs, log in as admin and call `POST /api/v1/admin/demo/reset` (or `api.admin.resetDemo()`) to put everything back to the starting data without logging anyone out.
 - Use `createApiClient` from `@handy/contracts` to call the backend instead of writing fetch calls (see the top of [docs/api.md](docs/api.md)).
 - Import shared types from `@handy/contracts` instead of making your own, so everyone stays in sync.
