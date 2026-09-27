@@ -57,12 +57,25 @@ interface DemoWorker {
   hours: [string, string];
 }
 
-const DEMO_WORKERS: DemoWorker[] = [
-  {
-    firstName: "James", lastName: "Robinson", bio: "Handyman for 20 years. Happy to help with anything around the house.",
-    rating: 4.9, ratingCount: 80, completedJobs: 87, milesAway: 2.4, serviceRadius: 15, verificationStatus: "VERIFIED",
-    services: [["HOME_MAINTENANCE", "EXPERIENCED"], ["MOVING_ASSISTANCE", "EXPERIENCED"]], days: EVERY_DAY, hours: ["08:00", "21:00"],
-  },
+/** The demo's only worker, so whatever Margaret asks for during the demo reaches him. */
+const JAMES: DemoWorker = {
+  firstName: "James", lastName: "Robinson", bio: "Handyman for 20 years. Happy to help around the house, run errands, or give you a ride.",
+  rating: 4.9, ratingCount: 80, completedJobs: 87, milesAway: 2.4, serviceRadius: 15, verificationStatus: "VERIFIED",
+  services: [
+    ["HOME_MAINTENANCE", "EXPERIENCED"], ["MOVING_ASSISTANCE", "EXPERIENCED"], ["ERRANDS", "EXPERIENCED"], ["TRANSPORTATION", "BASIC"],
+    ["LAWN_CARE", "BASIC"], ["CLEANING", "BASIC"], ["TECH_SUPPORT", "BASIC"], ["PET_ASSISTANCE", "BASIC"], ["COMPANIONSHIP", "BASIC"],
+  ],
+  days: EVERY_DAY, hours: ["08:00", "21:00"],
+};
+
+/**
+ * A fuller set of workers for the tests, which need several people to check
+ * matching (who's closest, who's qualified, who's booked). Turned on with
+ * SEED_EXTRA_WORKERS=true, which the API's vitest config sets. James only
+ * does home repairs and moving here, so the tests can tell workers apart.
+ */
+const TEST_WORKERS: DemoWorker[] = [
+  { ...JAMES, bio: "Handyman for 20 years. Happy to help with anything around the house.", services: [["HOME_MAINTENANCE", "EXPERIENCED"], ["MOVING_ASSISTANCE", "EXPERIENCED"]] },
   {
     firstName: "Maria", lastName: "Lopez", bio: "Errands, cleaning and yard work. Always on time.",
     rating: 4.8, ratingCount: 48, completedJobs: 52, milesAway: 3.1, serviceRadius: 12, verificationStatus: "VERIFIED",
@@ -100,6 +113,9 @@ const DEMO_WORKERS: DemoWorker[] = [
   },
 ];
 
+const withTestWorkers = () => process.env.SEED_EXTRA_WORKERS === "true";
+const demoWorkers = () => (withTestWorkers() ? TEST_WORKERS : [JAMES]);
+
 const ADMIN = { role: "ADMIN" as const, firstName: "Ada", lastName: "Admin", email: "admin@handy.demo", phone: null };
 const CUSTOMER = { role: "CUSTOMER" as const, firstName: "Margaret", lastName: "Thompson", email: "margaret@handy.demo", phone: "404-555-0100" };
 /** Margaret's daughter (also her emergency contact), linked as her caregiver. */
@@ -133,7 +149,7 @@ const workerProfile = (w: DemoWorker) => ({
 });
 
 /** All emails the seed creates. */
-export const DEMO_EMAILS = [ADMIN.email, CUSTOMER.email, CAREGIVER.email, ...DEMO_WORKERS.map((w) => workerUser(w).email)];
+export const demoEmails = () => [ADMIN.email, CUSTOMER.email, CAREGIVER.email, ...demoWorkers().map((w) => workerUser(w).email)];
 
 async function insertWorkerServices(tx: Database, workerId: string, w: DemoWorker) {
   await tx.insert(workerQualifications).values(
@@ -142,8 +158,11 @@ async function insertWorkerServices(tx: Database, workerId: string, w: DemoWorke
   await tx.insert(workerAvailability).values(w.days.map((dayOfWeek) => ({ workerId, dayOfWeek, startTime: w.hours[0], endTime: w.hours[1] })));
 }
 
+/** Who did Margaret's past errand: James in the demo, Maria in the tests (which check "Can Maria come back?"). */
+const pastWorker = () => (withTestWorkers() ? "Maria" : "James");
+
 /** One completed job so the customer's history screen isn't empty. */
-async function insertPastJob(tx: Database, customerId: string, workerId: string) {
+async function insertPastJob(tx: Database, customerId: string, workerId: string, workerName: string) {
   const completedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
   const [pastRequest] = await tx
     .insert(serviceRequests)
@@ -183,7 +202,7 @@ async function insertPastJob(tx: Database, customerId: string, workerId: string)
     customerId,
     workerId,
     score: 5,
-    comment: "Maria was very helpful and arrived on time.",
+    comment: `${workerName} was very helpful and arrived on time.`,
     createdAt: completedAt,
   });
 }
@@ -211,16 +230,18 @@ export async function seed(db: Database, log: (msg: string) => void = console.lo
     await tx.insert(caregiverLinks).values({ customerId: customer!.id, caregiverId: caregiver!.id });
 
     const workerIds: Record<string, string> = {};
-    for (const w of DEMO_WORKERS) {
+    for (const w of demoWorkers()) {
       const [user] = await tx.insert(users).values({ ...workerUser(w), passwordHash }).returning();
       workerIds[w.firstName] = user!.id;
       await tx.insert(workerProfiles).values({ userId: user!.id, ...workerProfile(w) });
       await insertWorkerServices(tx, user!.id, w);
     }
-    await insertPastJob(tx, customer!.id, workerIds.Maria!);
+    const past = pastWorker();
+    await insertPastJob(tx, customer!.id, workerIds[past]!, past);
   });
 
-  log(`Seeded ${SERVICE_CATEGORY_SEED.length} categories, 1 admin, 1 customer, 1 caregiver, ${DEMO_WORKERS.length} workers. Password for all: ${DEMO_PASSWORD}`);
+  const count = demoWorkers().length;
+  log(`Seeded ${SERVICE_CATEGORY_SEED.length} categories, 1 admin, 1 customer, 1 caregiver, ${count} worker${count === 1 ? "" : "s"}. Password for all: ${DEMO_PASSWORD}`);
 }
 
 /**
@@ -243,9 +264,11 @@ export async function resetDemoData(db: Database): Promise<void> {
     await tx.delete(conversations);
     await tx.delete(caregiverInvites);
     await tx.delete(caregiverLinks);
-    await tx.delete(users).where(notInArray(users.email, DEMO_EMAILS));
+    const emails = demoEmails();
+    // Accounts that signed up during the demo, and workers from older seeds, go away.
+    await tx.delete(users).where(notInArray(users.email, emails));
 
-    const existing = await tx.select().from(users).where(inArray(users.email, DEMO_EMAILS));
+    const existing = await tx.select().from(users).where(inArray(users.email, emails));
     const idByEmail = new Map(existing.map((u) => [u.email, u.id]));
     const need = (email: string) => {
       const id = idByEmail.get(email);
@@ -262,7 +285,7 @@ export async function resetDemoData(db: Database): Promise<void> {
     await tx.update(users).set(CAREGIVER).where(eq(users.id, caregiverId));
     await tx.insert(caregiverLinks).values({ customerId, caregiverId });
 
-    for (const w of DEMO_WORKERS) {
+    for (const w of demoWorkers()) {
       const id = need(workerUser(w).email);
       await tx.update(users).set(workerUser(w)).where(eq(users.id, id));
       await tx.update(workerProfiles).set(workerProfile(w)).where(eq(workerProfiles.userId, id));
@@ -270,6 +293,7 @@ export async function resetDemoData(db: Database): Promise<void> {
       await tx.delete(workerAvailability).where(eq(workerAvailability.workerId, id));
       await insertWorkerServices(tx, id, w);
     }
-    await insertPastJob(tx, customerId, need("maria@handy.demo"));
+    const past = pastWorker();
+    await insertPastJob(tx, customerId, need(`${past.toLowerCase()}@handy.demo`), past);
   });
 }

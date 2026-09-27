@@ -32,7 +32,8 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Live updates over SSE or WebSockets, plus saved notifications. If the connection drops, it catches up on what it missed when it reconnects.
 - Ratings, job history, worker earnings, and admin stats
 - A typed API client in `@handy/contracts` for the frontends
-- A demo reset so we can start the demo fresh for each judge, and a demo autopilot that plays the worker's side so one person can demo the whole thing from the customer app
+- The customer sees the full price (service, urgent add-on, Handy fee) and has to agree to it before a request is sent, and the worker sees what they'll earn before accepting
+- A demo reset so we can start the demo fresh for each judge
 - If the AI or matching service crashes, hangs, or sends back junk, the backend quietly uses its built-in version for that message instead of breaking the demo
 - Rate limits on login, signup, and the AI chat, so nobody can brute force passwords or run up our AI bill
 
@@ -65,9 +66,7 @@ You don't need to install Postgres. By default it uses PGlite, which is basicall
 Password for all of them is `password123`.
 
 - `margaret@handy.demo` - customer
-- `james@handy.demo` - worker (moving + home repairs, best match for the couch demo)
-- `tom@handy.demo`, `maria@handy.demo`, `david@handy.demo`, `aisha@handy.demo`, `grace@handy.demo`, `marcus@handy.demo` - more workers
-- `linda@handy.demo` - worker who isn't verified yet, so she won't get jobs until an admin approves her
+- `james@handy.demo` - worker. He's the only one in the demo and does every kind of job, so whatever Margaret asks for goes to him
 - `susan@handy.demo` - caregiver (Margaret's daughter), already linked to Margaret. Log into the customer app as her to see the family view
 - `admin@handy.demo` - admin
 
@@ -89,7 +88,7 @@ pnpm dev:api        # start the API
 pnpm dev:customer   # start the customer app on http://localhost:3000 (start the API first)
 pnpm dev:worker     # start the worker app on http://localhost:3001
 pnpm dev:admin      # start the admin dashboard on http://localhost:3002
-pnpm demo reset     # demo controls: reset, autopilot on/off, go, scam, status (see docs/demo.md)
+pnpm demo reset     # put the demo data back to the start (the admin dashboard has a button for this too)
 pnpm test           # run the API tests
 pnpm typecheck      # typecheck everything
 pnpm db:generate    # make a new migration after changing packages/db/src/schema.ts

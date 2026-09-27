@@ -10,7 +10,7 @@ import type { CustomerProfileRow, ServiceRequestRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
 import { sameAddress } from "../lib/geo";
 import { EMERGENCY_GUIDANCE, detectEmergency } from "../lib/safety";
-import { estimatePriceCents } from "../lib/pricing";
+import { quotePrice } from "../lib/pricing";
 import { addDays, addMinutes, dayOfWeek, friendlyDate, nowTimeIn, repeatDays, todayIn } from "../lib/time";
 import { schedulesRepo } from "../repositories/schedules";
 import { categoriesRepo } from "../repositories/categories";
@@ -44,7 +44,7 @@ export class RequestService {
     if (conv.customerId !== actor.id) throw forbidden("Only the customer can confirm their own request.");
     if (conv.status === "SUBMITTED") throw new ApiError("CONFLICT", "This request was already sent.");
 
-    const { conversationId: _ignored, ...overrides } = body;
+    const { conversationId: _ignored, agreedTotalCents, ...overrides } = body;
     const draft = mergeDraft(conv.draft, overrides);
     if (draft.requestedStartTime && !draft.requestedEndTime) draft.requestedEndTime = addMinutes(draft.requestedStartTime, 60);
 
@@ -74,6 +74,13 @@ export class RequestService {
       customerProfilesRepo.get(db, actor.id),
     ]);
     if (!category) throw new ApiError("VALIDATION_FAILED", "Unknown service type.");
+    // They agreed to a price on the confirmation card. If it's different now, stop and show them again.
+    const quote = quotePrice(category.basePriceCents, draft.urgency, config.platformFeeCents);
+    if (agreedTotalCents !== undefined && agreedTotalCents !== quote.totalCents) {
+      throw new ApiError("PRICE_CHANGED", `The price for this is now $${(quote.totalCents / 100).toFixed(2)}. Please look it over and confirm again.`, {
+        priceQuote: quote,
+      });
+    }
     if (draft.preferredWorkerId) {
       const preferred = await usersRepo.findById(db, draft.preferredWorkerId);
       if (preferred?.role !== "WORKER") throw new ApiError("VALIDATION_FAILED", "We couldn't find that helper.");
@@ -116,8 +123,8 @@ export class RequestService {
         preferredWorkerId: draft.preferredWorkerId ?? null,
         scheduleId: schedule?.id ?? null,
         status: "SEARCHING",
-        estimatedPriceCents: estimatePriceCents(category.basePriceCents, draft.urgency),
-        platformFeeCents: config.platformFeeCents,
+        estimatedPriceCents: quote.servicePriceCents,
+        platformFeeCents: quote.platformFeeCents,
       });
       await conversationsRepo.update(tx, conv.id, { status: "SUBMITTED", draft, readyToSubmit: true, missingInformation: [] });
       await conversationsRepo.addMessage(tx, {

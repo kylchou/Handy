@@ -16,7 +16,7 @@ Log in as `admin@handy.demo` / `password123`. Other accounts get turned away.
 
 | Route | What it shows |
 |---|---|
-| `/dashboard` | Active requests, active jobs, available workers, completed today. A "needs attention" list (requests still searching after 10 minutes, possible no-shows, workers waiting to be verified), a live activity feed, and demo controls: autopilot on/off, Go, and reset |
+| `/dashboard` | Active requests, active jobs, available workers, completed today. A "needs attention" list (requests still searching after 10 minutes, possible no-shows, workers waiting to be verified), a live activity feed, and a button to reset the demo data |
 | `/requests` | Every request with a status filter. "See matches" shows how the matching engine ranked workers for it, with scores and reasons. Requests still searching can be cancelled |
 | `/jobs` | Every job with its customer, worker, status, pay, and rating. Possible no-shows are flagged |
 | `/workers` | Workers waiting on a decision come first. Verify, reject, or suspend them, and see their skills, availability, rating, and reviews |

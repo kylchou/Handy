@@ -22,7 +22,10 @@ export default function OfferCard({ offer, now }: { offer: JobOfferDTO; now: num
             {formatDay(offer.requestedDate)} · {formatTime(offer.requestedStartTime)}
           </p>
         </div>
-        <p className="text-2xl font-bold text-accent">{formatPay(offer.estimatedPayCents)}</p>
+        <div className="text-right">
+          <p className="text-xs font-bold uppercase tracking-wide text-ink-soft">You earn</p>
+          <p className="text-2xl font-bold text-accent">{formatPay(offer.estimatedPayCents)}</p>
+        </div>
       </div>
       <div className="mt-3 flex items-center justify-between gap-3">
         <span className={`flex items-center gap-1 text-sm font-bold ${left ? "text-warm" : "text-danger"}`}>

@@ -9,6 +9,7 @@ import Header from "@/components/Header";
 import NavBar from "@/components/NavBar";
 import BigButton from "@/components/BigButton";
 import TypingIndicator from "@/components/TypingIndicator";
+import { ApiRequestError, type PriceQuoteDTO } from "@handy/contracts";
 import { api, friendlyError, saveAccessibility, useRequireLogin } from "@/lib/api";
 import { useSpeech } from "@/lib/useSpeech";
 import { useVoiceInput } from "@/lib/useVoiceInput";
@@ -60,6 +61,7 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState<ServiceRequestDraft>({});
+  const [priceQuote, setPriceQuote] = useState<PriceQuoteDTO | null>(null);
   const [readyToSubmit, setReadyToSubmit] = useState(false);
   const [safetyStatus, setSafetyStatus] = useState<SafetyStatus | null>(null);
   const [callNumber, setCallNumber] = useState("911");
@@ -124,6 +126,7 @@ export default function ChatPage() {
     setMessages(stored.slice(Math.max(firstCustomer, 0)).map((m) => ({ id: m.id, senderType: m.senderType, content: m.content })));
     setConversationId(conversation.id);
     setDraft(conversation.draft);
+    setPriceQuote(conversation.priceQuote);
     setReadyToSubmit(conversation.status === "ACTIVE" && conversation.readyToSubmit);
     setSafetyStatus(conversation.safetyStatus);
     const lastAI = [...stored].reverse().find((m) => m.senderType === "AI");
@@ -156,6 +159,7 @@ export default function ChatPage() {
     setMessages([]);
     setInput("");
     setDraft({});
+    setPriceQuote(null);
     setReadyToSubmit(false);
     setSafetyStatus(null);
     setCallNumber("911");
@@ -212,6 +216,7 @@ export default function ChatPage() {
         { id: response.assistantMessage.id, senderType: "AI", content: response.assistantMessage.content },
       ]);
       setDraft(response.conversation.draft);
+      setPriceQuote(response.conversation.priceQuote);
       setReadyToSubmit(response.conversation.readyToSubmit);
       setSafetyStatus(response.conversation.safetyStatus);
       // Emergencies are always read out, even with read-aloud off.
@@ -241,16 +246,19 @@ export default function ChatPage() {
     send(input);
   }
 
-  async function handleConfirm() {
+  async function handleConfirm(agreedTotalCents: number) {
     if (!conversationId) return;
     setSubmitting(true);
     try {
-      const { request } = await api.requests.create({ conversationId });
+      const { request } = await api.requests.create({ conversationId, agreedTotalCents });
       storeChatId(null);
       router.push(`/request/${request.id}`);
     } catch (err) {
       setSubmitting(false);
-      setReadyToSubmit(false);
+      // The price moved: show the new one on the card and have them agree again.
+      const newQuote = err instanceof ApiRequestError && err.code === "PRICE_CHANGED" ? (err.details as { priceQuote?: PriceQuoteDTO })?.priceQuote : undefined;
+      if (newQuote) setPriceQuote(newQuote);
+      else setReadyToSubmit(false);
       setMessages((m) => [...m, { id: newId(), senderType: "AI", content: friendlyError(err) }]);
     }
   }
@@ -395,6 +403,7 @@ export default function ChatPage() {
             {readyToSubmit && !isEmergency && (
               <ConfirmationCard
                 draft={draft}
+                priceQuote={priceQuote}
                 onConfirm={handleConfirm}
                 onEdit={handleEdit}
                 submitting={submitting}

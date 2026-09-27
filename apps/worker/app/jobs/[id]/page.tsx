@@ -127,17 +127,32 @@ function OfferDetails({ offerId }: { offerId: string }) {
           )}
           <div className="flex items-end justify-between border-t border-line pt-3">
             <div>
-              <p className="text-sm font-bold uppercase tracking-wide text-ink-soft">Estimated pay</p>
+              <p className="text-sm font-bold uppercase tracking-wide text-ink-soft">You'll earn</p>
               <p className="text-3xl font-bold text-accent">{formatPay(offer.estimatedPayCents)}</p>
             </div>
             <p className={`font-bold ${left ? "text-warm" : "text-danger"}`}>{left ?? "Offer expired"}</p>
           </div>
+          <dl className="space-y-0.5 text-ink-soft">
+            <div className="flex justify-between">
+              <dt>{offer.serviceName}</dt>
+              <dd>{formatPay(offer.estimatedPayCents - offer.urgentBonusCents)}</dd>
+            </div>
+            {offer.urgentBonusCents > 0 && (
+              <div className="flex justify-between">
+                <dt>Urgent bonus</dt>
+                <dd>+{formatPay(offer.urgentBonusCents)}</dd>
+              </div>
+            )}
+          </dl>
+          <p className="text-sm text-ink-soft">
+            {offer.customer.firstName} already agreed to this price. It's paid to you through Handy once you complete the job.
+          </p>
         </section>
         <p className="text-sm text-ink-soft">You'll see the exact address after you accept.</p>
         {error && <ErrorNote>{error}</ErrorNote>}
         <div className="grid grid-cols-2 gap-3">
           <Button onClick={accept} disabled={busy || !left}>
-            Accept Job
+            Accept for {formatPay(offer.estimatedPayCents)}
           </Button>
           <Button variant="secondary" onClick={decline} disabled={busy}>
             Decline
@@ -246,7 +261,8 @@ function JobDetails({ jobId }: { jobId: string }) {
             </ul>
           )}
           <p className="border-t border-line pt-2 text-lg">
-            Pay: <strong>{formatPay(job.finalPriceCents ?? job.request.estimatedPriceCents)}</strong>
+            {job.status === "COMPLETED" ? "You earned" : "You'll earn"}: <strong>{formatPay(job.finalPriceCents ?? job.request.estimatedPriceCents)}</strong>
+            {active && <span className="text-base text-ink-soft"> · paid through Handy once you complete the job</span>}
           </p>
         </section>
 

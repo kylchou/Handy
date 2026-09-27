@@ -79,7 +79,7 @@ export class ProfileService {
         requestStatus: r.status,
         jobStatus: job?.status ?? null,
         worker: job ? (workers.get(job.workerId) ?? null) : null,
-        priceCents: job?.finalPriceCents ?? r.estimatedPriceCents,
+        priceCents: (job?.finalPriceCents ?? r.estimatedPriceCents) + r.platformFeeCents,
         rating: job ? (ratingByJob.get(job.id) ?? null) : null,
         createdAt: r.createdAt.toISOString(),
       };

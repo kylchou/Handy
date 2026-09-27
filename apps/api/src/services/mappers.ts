@@ -23,6 +23,7 @@ import type {
   JobMessageDTO,
   JobOfferDTO,
   NotificationDTO,
+  PriceQuoteDTO,
   RatingDTO,
   ServiceCategoryDTO,
   ServiceRequestDTO,
@@ -117,7 +118,7 @@ export function toCategoryDTO(c: ServiceCategoryRow): ServiceCategoryDTO {
   };
 }
 
-export function toConversationDTO(c: ConversationRow, serviceRequestId: string | null): ConversationDTO {
+export function toConversationDTO(c: ConversationRow, serviceRequestId: string | null, priceQuote: PriceQuoteDTO | null = null): ConversationDTO {
   return {
     id: c.id,
     customerId: c.customerId,
@@ -126,6 +127,7 @@ export function toConversationDTO(c: ConversationRow, serviceRequestId: string |
     missingInformation: c.missingInformation,
     readyToSubmit: c.readyToSubmit,
     safetyStatus: c.safetyStatus,
+    priceQuote,
     serviceRequestId,
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
@@ -163,6 +165,7 @@ export function toRequestDTO(r: ServiceRequestRow, pendingOfferCount: number, jo
     status: r.status,
     estimatedPriceCents: r.estimatedPriceCents,
     platformFeeCents: r.platformFeeCents,
+    totalPriceCents: r.estimatedPriceCents + r.platformFeeCents,
     pendingOfferCount,
     jobId,
     createdAt: r.createdAt.toISOString(),
@@ -213,6 +216,7 @@ export function toJobOfferDTO(
     urgency: r.urgency,
     specialRequirements: r.specialRequirements,
     estimatedPayCents: r.estimatedPriceCents,
+    urgentBonusCents: category ? Math.max(0, r.estimatedPriceCents - category.basePriceCents) : 0,
     customer: toCustomerPublicDTO(customer),
     createdAt: o.createdAt.toISOString(),
     expiresAt: new Date(o.createdAt.getTime() + ttlSeconds * 1000).toISOString(),

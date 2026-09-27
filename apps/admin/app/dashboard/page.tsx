@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import type { AdminStatsDTO, AdminWorkerDTO, AutopilotStatusDTO, JobDetailDTO, RealtimeEvent, ServiceRequestDTO } from "@handy/contracts";
+import type { AdminStatsDTO, AdminWorkerDTO, JobDetailDTO, RealtimeEvent, ServiceRequestDTO } from "@handy/contracts";
 import Shell from "@/components/Shell";
 import { ErrorNote } from "@/components/ui";
 import { api, friendlyError } from "@/lib/api";
@@ -57,26 +57,18 @@ export default function DashboardPage() {
   const [stuck, setStuck] = useState<ServiceRequestDTO[]>([]);
   const [noShows, setNoShows] = useState<JobDetailDTO[]>([]);
   const [pending, setPending] = useState<AdminWorkerDTO[]>([]);
-  const [autopilot, setAutopilot] = useState<AutopilotStatusDTO | null>(null);
   const [feed, setFeed] = useState<Array<{ id: string; at: string; text: string }>>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useLive(async () => {
     try {
-      const [s, requests, jobs, workers, a] = await Promise.all([
-        api.admin.stats(),
-        api.admin.requests("SEARCHING"),
-        api.admin.jobs(),
-        api.admin.workers(),
-        api.admin.autopilot().catch(() => null), // turned off in production unless allowed
-      ]);
+      const [s, requests, jobs, workers] = await Promise.all([api.admin.stats(), api.admin.requests("SEARCHING"), api.admin.jobs(), api.admin.workers()]);
       setStats(s);
       // Still looking after 10 minutes is worth a look.
       setStuck(requests.filter((r) => Date.now() - new Date(r.createdAt).getTime() > 10 * 60 * 1000));
       setNoShows(jobs.filter((j) => j.noShowAlertedAt && j.status === "ACCEPTED"));
       setPending(workers.filter((w) => w.profile.verificationStatus !== "VERIFIED" && w.profile.verificationStatus !== "REJECTED"));
-      setAutopilot(a);
       setError(null);
     } catch (err) {
       setError(friendlyError(err));
@@ -92,12 +84,12 @@ export default function DashboardPage() {
     });
   }, []);
 
-  async function run(action: () => Promise<unknown>) {
+  async function reset() {
+    if (!window.confirm("Reset the demo? This deletes every request, job, and chat and puts the demo accounts back to the start. Nobody gets logged out.")) return;
     setBusy(true);
     setError(null);
     try {
-      await action();
-      setAutopilot(await api.admin.autopilot());
+      await api.admin.resetDemo();
     } catch (err) {
       setError(friendlyError(err));
     } finally {
@@ -105,17 +97,7 @@ export default function DashboardPage() {
     }
   }
 
-  const reset = () => {
-    if (window.confirm("Reset the demo? This deletes every request, job, and chat and puts the demo accounts back to the start. Nobody gets logged out.")) {
-      void run(async () => {
-        await api.admin.resetDemo();
-        if (autopilot?.enabled) await api.admin.setAutopilot({ enabled: true, hold: true });
-      });
-    }
-  };
-
   const attention = stuck.length + noShows.length + pending.length;
-  const button = "rounded-control px-4 py-2 font-bold disabled:opacity-50";
 
   return (
     <Shell title="Dashboard">
@@ -183,41 +165,15 @@ export default function DashboardPage() {
         </section>
       </div>
 
-      {autopilot && (
-        <section className="mt-8 rounded-card border border-line bg-white p-5 shadow-card">
-          <h2 className="text-lg font-bold text-ink">Demo controls</h2>
-          <p className="mb-4 text-ink-soft">
-            The autopilot plays a worker: it accepts new requests, waits until you press Go, then moves the job along every {autopilot.stepSeconds}{" "}
-            seconds.{" "}
-            <strong>
-              {autopilot.enabled ? (autopilot.hold ? "On, waiting for Go." : "On, moving jobs along.") : "Off."}
-            </strong>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {autopilot.enabled ? (
-              <>
-                <button disabled={busy} onClick={() => run(() => api.admin.setAutopilot({ enabled: true, hold: false }))} className={`${button} bg-accent text-white`}>
-                  Go
-                </button>
-                <button disabled={busy} onClick={() => run(() => api.admin.setAutopilot({ enabled: false }))} className={`${button} border-2 border-line bg-white`}>
-                  Turn autopilot off
-                </button>
-              </>
-            ) : (
-              <button
-                disabled={busy}
-                onClick={() => run(() => api.admin.setAutopilot({ enabled: true, hold: true, stepSeconds: 6 }))}
-                className={`${button} bg-accent text-white`}
-              >
-                Turn autopilot on
-              </button>
-            )}
-            <button disabled={busy} onClick={reset} className={`${button} border-2 border-danger/40 bg-white text-danger`}>
-              Reset demo data
-            </button>
-          </div>
-        </section>
-      )}
+      <section className="mt-8 flex flex-wrap items-center justify-between gap-3 rounded-card border border-line bg-white p-5 shadow-card">
+        <div>
+          <h2 className="text-lg font-bold text-ink">Demo data</h2>
+          <p className="text-ink-soft">Clears every request, job, and chat and puts the demo accounts back to the start.</p>
+        </div>
+        <button disabled={busy} onClick={reset} className="rounded-control border-2 border-danger/40 bg-white px-4 py-2 font-bold text-danger disabled:opacity-50">
+          Reset demo data
+        </button>
+      </section>
     </Shell>
   );
 }
