@@ -9,6 +9,7 @@
     "dev:api": "pnpm --filter @handy/api dev",
     "dev:customer": "pnpm --filter @handy/customer dev",
     "dev:worker": "pnpm --filter @handy/worker dev",
+    "dev:admin": "pnpm --filter @handy/admin dev",
     "demo": "pnpm --filter @handy/api demo",
     "start": "pnpm --filter @handy/api start",
     "build": "pnpm -r --if-present build",
