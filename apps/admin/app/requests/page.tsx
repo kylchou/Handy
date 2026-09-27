@@ -82,7 +82,7 @@ export default function RequestsPage() {
                 <Pill status={r.status} />
                 {r.status === "SEARCHING" && <p className="mt-1 text-sm text-ink-soft">{r.pendingOfferCount} offers out</p>}
               </Td>
-              <Td className="whitespace-nowrap">{money(r.estimatedPriceCents)}</Td>
+              <Td className="whitespace-nowrap">{money(r.totalPriceCents)}</Td>
               <Td className="whitespace-nowrap">
                 <button onClick={() => showMatches(r.id)} className="font-bold text-accent underline">
                   {open === r.id ? "Hide matches" : "See matches"}

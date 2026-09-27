@@ -239,7 +239,11 @@ export interface ServiceRequestDTO {
   status: ServiceRequestStatus;
   estimatedPriceCents: number;
   platformFeeCents: number;
-  /** What the customer pays: estimatedPriceCents plus platformFeeCents. */
+  /** Tip the customer chose when booking. It all goes to the worker. */
+  tipCents: number;
+  /** What the worker earns: estimatedPriceCents plus the tip. */
+  workerPayCents: number;
+  /** What the customer pays: estimatedPriceCents plus platformFeeCents plus the tip. */
   totalPriceCents: number;
   /** Number of workers the request is currently offered to (pending offers). */
   pendingOfferCount: number;
@@ -304,8 +308,10 @@ export interface JobOfferDTO {
   requestedEndTime: string;
   urgency: Urgency;
   specialRequirements: string[];
-  /** What the worker earns if they take it. The customer agreed to this price when they booked. */
+  /** What the worker earns if they take it, tip included. The customer agreed to this price when they booked. */
   estimatedPayCents: number;
+  /** The customer's tip, included in estimatedPayCents. */
+  tipCents: number;
   /** The part of estimatedPayCents that's extra because the job is urgent. 0 otherwise. */
   urgentBonusCents: number;
   customer: CustomerPublicDTO;
@@ -335,6 +341,8 @@ export interface RatingDTO {
   workerId: string;
   score: number;
   comment: string | null;
+  /** "Margaret T.", filled in when listing a worker's reviews. */
+  reviewerName?: string;
   createdAt: string;
 }
 

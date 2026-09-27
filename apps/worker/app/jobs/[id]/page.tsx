@@ -135,12 +135,18 @@ function OfferDetails({ offerId }: { offerId: string }) {
           <dl className="space-y-0.5 text-ink-soft">
             <div className="flex justify-between">
               <dt>{offer.serviceName}</dt>
-              <dd>{formatPay(offer.estimatedPayCents - offer.urgentBonusCents)}</dd>
+              <dd>{formatPay(offer.estimatedPayCents - offer.urgentBonusCents - offer.tipCents)}</dd>
             </div>
             {offer.urgentBonusCents > 0 && (
               <div className="flex justify-between">
                 <dt>Urgent bonus</dt>
                 <dd>+{formatPay(offer.urgentBonusCents)}</dd>
+              </div>
+            )}
+            {offer.tipCents > 0 && (
+              <div className="flex justify-between font-bold text-accent">
+                <dt>Tip from {offer.customer.firstName}</dt>
+                <dd>+{formatPay(offer.tipCents)}</dd>
               </div>
             )}
           </dl>
@@ -261,7 +267,8 @@ function JobDetails({ jobId }: { jobId: string }) {
             </ul>
           )}
           <p className="border-t border-line pt-2 text-lg">
-            {job.status === "COMPLETED" ? "You earned" : "You'll earn"}: <strong>{formatPay(job.finalPriceCents ?? job.request.estimatedPriceCents)}</strong>
+            {job.status === "COMPLETED" ? "You earned" : "You'll earn"}: <strong>{formatPay(job.finalPriceCents ?? job.request.workerPayCents)}</strong>
+            {job.request.tipCents > 0 && <span className="text-base text-ink-soft"> (includes a {formatPay(job.request.tipCents)} tip)</span>}
             {active && <span className="text-base text-ink-soft"> · paid through Handy once you complete the job</span>}
           </p>
         </section>
@@ -297,7 +304,7 @@ function JobDetails({ jobId }: { jobId: string }) {
 
         {job.status === "COMPLETED" && (
           <div className="rounded-card border-2 border-accent bg-accent-light p-4 text-center">
-            <p className="text-xl font-bold text-ink">Nice work! {formatPay(job.finalPriceCents ?? job.request.estimatedPriceCents)} earned.</p>
+            <p className="text-xl font-bold text-ink">Nice work! {formatPay(job.finalPriceCents ?? job.request.workerPayCents)} earned.</p>
             {job.rating ? (
               <p className="text-lg text-ink">
                 {job.customer.firstName} gave you {"★".repeat(job.rating.score)}

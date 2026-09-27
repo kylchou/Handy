@@ -79,7 +79,7 @@ export class ProfileService {
         requestStatus: r.status,
         jobStatus: job?.status ?? null,
         worker: job ? (workers.get(job.workerId) ?? null) : null,
-        priceCents: (job?.finalPriceCents ?? r.estimatedPriceCents) + r.platformFeeCents,
+        priceCents: r.estimatedPriceCents + r.platformFeeCents + r.tipCents,
         rating: job ? (ratingByJob.get(job.id) ?? null) : null,
         createdAt: r.createdAt.toISOString(),
       };
@@ -144,8 +144,14 @@ export class ProfileService {
     return w;
   }
 
+  /** A worker's reviews, newest first, with each reviewer's first name and last initial. */
   async workerRatings(workerId: string): Promise<RatingDTO[]> {
-    return (await ratingsRepo.byWorker(this.ctx.db, workerId)).map(toRatingDTO);
+    const ratings = await ratingsRepo.byWorker(this.ctx.db, workerId);
+    const reviewers = new Map((await usersRepo.findByIds(this.ctx.db, [...new Set(ratings.map((r) => r.customerId))])).map((u) => [u.id, u]));
+    return ratings.map((r) => {
+      const who = reviewers.get(r.customerId);
+      return { ...toRatingDTO(r), reviewerName: who ? `${who.firstName} ${who.lastName.charAt(0)}.` : "A Handy customer" };
+    });
   }
 
   async earnings(actor: Actor): Promise<WorkerEarningsDTO> {

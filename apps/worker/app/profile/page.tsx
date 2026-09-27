@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { BadgeCheck, Clock } from "lucide-react";
-import { SERVICE_CATEGORY_CODES, type QualificationLevel, type ServiceCategoryCode, type WorkerProfileDTO } from "@handy/contracts";
+import { SERVICE_CATEGORY_CODES, type QualificationLevel, type RatingDTO, type ServiceCategoryCode, type WorkerProfileDTO } from "@handy/contracts";
 import Button from "@/components/Button";
 import Page, { ErrorNote } from "@/components/Page";
 import { api, friendlyError, useRequireLogin } from "@/lib/api";
@@ -29,6 +29,7 @@ export default function ProfilePage() {
   useRequireLogin();
   const router = useRouter();
   const [profile, setProfile] = useState<WorkerProfileDTO | null>(null);
+  const [reviews, setReviews] = useState<RatingDTO[]>([]);
   const [bio, setBio] = useState("");
   const [address, setAddress] = useState("");
   const [radius, setRadius] = useState(10);
@@ -49,6 +50,7 @@ export default function ProfilePage() {
         setAddress(p.address ?? "");
         setRadius(p.serviceRadius);
         setSkills(Object.fromEntries(p.qualifications.map((q) => [q.serviceCategoryId, q.qualificationLevel])));
+        return api.workers.ratings(p.userId).then(setReviews);
       })
       .catch((err) => setError(friendlyError(err)));
   }, []);
@@ -100,6 +102,31 @@ export default function ProfilePage() {
           <span className="font-bold">{VERIFICATION[profile.verificationStatus]}</span>
           {profile.verificationStatus !== "VERIFIED" && <span className="text-ink-soft">· you'll get jobs once you're verified</span>}
         </p>
+
+        <section aria-label="Your reviews" className="space-y-2">
+          <h2 className="text-lg font-bold text-ink">
+            What customers say <span className="font-normal text-ink-soft">· ★ {profile.rating.toFixed(1)} from {profile.ratingCount} ratings</span>
+          </h2>
+          <p className="text-sm text-ink-soft">Customers can read these on your card before and during a job.</p>
+          {reviews.filter((r) => r.comment).length === 0 ? (
+            <p className="rounded-card border border-dashed border-line bg-white p-4 text-ink-soft">No written reviews yet.</p>
+          ) : (
+            reviews
+              .filter((r) => r.comment)
+              .slice(0, 10)
+              .map((r) => (
+                <figure key={r.id} className="rounded-card border border-line bg-white p-3">
+                  <p className="text-warm" aria-label={`${r.score} out of 5 stars`}>
+                    {"★".repeat(r.score)}
+                  </p>
+                  <blockquote className="text-ink">"{r.comment}"</blockquote>
+                  <figcaption className="text-sm text-ink-soft">
+                    {r.reviewerName ?? "A Handy customer"} · {new Date(r.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                  </figcaption>
+                </figure>
+              ))
+          )}
+        </section>
 
         <section className="space-y-3">
           <h2 className="text-lg font-bold text-ink">Jobs you can do</h2>

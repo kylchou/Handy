@@ -32,7 +32,8 @@ Our HackGT project. It's an app where older adults can get help with everyday st
 - Live updates over SSE or WebSockets, plus saved notifications. If the connection drops, it catches up on what it missed when it reconnects.
 - Ratings, job history, worker earnings, and admin stats
 - A typed API client in `@handy/contracts` for the frontends
-- The customer sees the full price (service, urgent add-on, Handy fee) and has to agree to it before a request is sent, and the worker sees what they'll earn before accepting
+- The customer sees the full price (service, urgent add-on, Handy fee, and an optional tip of 10/15/20% or a custom % or amount) and has to agree to it before a request is sent, and the worker sees what they'll earn, tip included, before accepting
+- Written reviews: customers can add a few words with their star rating, and anyone can read a worker's reviews on their card
 - A demo reset so we can start the demo fresh for each judge
 - If the AI or matching service crashes, hangs, or sends back junk, the backend quietly uses its built-in version for that message instead of breaking the demo
 - Rate limits on login, signup, and the AI chat, so nobody can brute force passwords or run up our AI bill

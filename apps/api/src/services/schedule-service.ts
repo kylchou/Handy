@@ -92,6 +92,7 @@ export class ScheduleService {
           status: "SEARCHING",
           estimatedPriceCents: estimatePriceCents(category?.basePriceCents ?? 0, locked.urgency),
           platformFeeCents: config.platformFeeCents,
+          tipCents: locked.tipCents,
         });
       });
       if (!request) continue;

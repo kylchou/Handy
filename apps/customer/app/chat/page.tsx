@@ -246,11 +246,11 @@ export default function ChatPage() {
     send(input);
   }
 
-  async function handleConfirm(agreedTotalCents: number) {
+  async function handleConfirm(agreedTotalCents: number, tipCents: number) {
     if (!conversationId) return;
     setSubmitting(true);
     try {
-      const { request } = await api.requests.create({ conversationId, agreedTotalCents });
+      const { request } = await api.requests.create({ conversationId, agreedTotalCents, tipCents });
       storeChatId(null);
       router.push(`/request/${request.id}`);
     } catch (err) {

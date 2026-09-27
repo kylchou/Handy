@@ -259,6 +259,8 @@ export const createServiceRequestSchema = z.object({
    * they never pay something they didn't see.
    */
   agreedTotalCents: z.number().int().nonnegative().optional(),
+  /** Optional tip, all of it for the worker. Up to $500. */
+  tipCents: z.number().int().min(0).max(50000).optional(),
 });
 export type CreateServiceRequestBody = z.infer<typeof createServiceRequestSchema>;
 
