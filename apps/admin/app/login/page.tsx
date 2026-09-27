@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, friendlyError } from "@/lib/api";
 import { ErrorNote } from "@/components/ui";
+import PasswordInput from "@/components/PasswordInput";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -47,9 +48,8 @@ export default function LoginPage() {
           <label htmlFor="password" className="mb-1 block font-bold">
             Password
           </label>
-          <input
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

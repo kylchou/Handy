@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import BigButton from "@/components/BigButton";
+import PasswordInput from "@/components/PasswordInput";
 import { api, friendlyError } from "@/lib/api";
 
 export default function SignupPage() {
@@ -57,15 +58,26 @@ export default function SignupPage() {
             <label htmlFor={f.key} className="mb-2 block text-lg font-bold text-ink">
               {f.label}
             </label>
-            <input
-              id={f.key}
-              type={f.type}
-              autoComplete={f.autoComplete}
-              required
-              value={form[f.key]}
-              onChange={update(f.key)}
-              className="w-full rounded-control border-2 border-field bg-white px-4 py-3 text-lg text-ink"
-            />
+            {f.type === "password" ? (
+              <PasswordInput
+                id={f.key}
+                autoComplete={f.autoComplete}
+                required
+                value={form[f.key]}
+                onChange={update(f.key)}
+                className="w-full rounded-control border-2 border-field bg-white px-4 py-3 text-lg text-ink"
+              />
+            ) : (
+              <input
+                id={f.key}
+                type={f.type}
+                autoComplete={f.autoComplete}
+                required
+                value={form[f.key]}
+                onChange={update(f.key)}
+                className="w-full rounded-control border-2 border-field bg-white px-4 py-3 text-lg text-ink"
+              />
+            )}
           </div>
         ))}
 
