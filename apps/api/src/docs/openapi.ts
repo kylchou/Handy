@@ -12,6 +12,7 @@ import {
   loginSchema,
   sendConversationMessageSchema,
   sendJobMessageSchema,
+  sendVoiceMessageSchema,
   signupSchema,
   updateAvailabilitySchema,
   updateCustomerProfileSchema,
@@ -83,6 +84,8 @@ const ROUTE_DOCS: Record<keyof ApiResponses, RouteDoc> = {
   "GET /jobs/:jobId": { tag: "Jobs", summary: "Get a job", returns: "JobDetailDTO", who: "the job's customer or worker, admin", notes: "arrivalCode is only included for the customer and admins." },
   "PATCH /jobs/:jobId/status": { tag: "Jobs", summary: "Move a job to its next status", returns: "JobDetailDTO", who: "the job's customer or worker, admin", body: updateJobStatusSchema, notes: "ACCEPTED -> EN_ROUTE -> ARRIVED -> IN_PROGRESS -> COMPLETED. Workers need the customer's arrivalCode to mark ARRIVED." },
   "GET /jobs/:jobId/messages": { tag: "Jobs", summary: "Chat messages", returns: "JobMessageDTO[]", who: "the job's customer or worker, admin" },
+  "POST /jobs/:jobId/messages/voice": { tag: "Jobs", summary: "Send a voice message", returns: "JobMessageDTO", who: "the job's customer or worker", body: sendVoiceMessageSchema, status: 201, notes: "Up to about a minute. The message comes back with voiceSeconds set; fetch the audio separately." },
+  "GET /jobs/:jobId/messages/:messageId/audio": { tag: "Jobs", summary: "The audio for a voice message", returns: "VoiceAudioResponse", who: "the job's customer or worker, admin", notes: "Play it with a data: URL built from mimeType and audioBase64." },
   "POST /jobs/:jobId/messages": { tag: "Jobs", summary: "Send a chat message", returns: "JobMessageDTO", who: "the job's customer or worker", body: sendJobMessageSchema, status: 201 },
   "POST /jobs/:jobId/rating": { tag: "Jobs", summary: "Rate a completed job", returns: "RatingDTO", who: "the job's customer", body: createRatingSchema, status: 201 },
 

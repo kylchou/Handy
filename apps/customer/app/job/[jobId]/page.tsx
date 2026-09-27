@@ -6,6 +6,9 @@ import NavBar from "@/components/NavBar";
 import BigButton from "@/components/BigButton";
 import WorkerCard from "@/components/WorkerCard";
 import JobStatusTracker from "@/components/JobStatusTracker";
+import VoiceMessage from "@/components/VoiceMessage";
+import { Mic } from "lucide-react";
+import { clock, useVoiceRecorder, type Recording } from "@/lib/useVoiceRecorder";
 import { api, friendlyError, useRequireLogin } from "@/lib/api";
 import { formatDate, formatPrice, formatTime, type JobDetailDTO, type JobMessageDTO } from "@/lib/types";
 
@@ -72,6 +75,19 @@ export default function JobPage() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const [sendingVoice, setSendingVoice] = useState(false);
+  const recorder = useVoiceRecorder(async (recording: Recording) => {
+    setSendingVoice(true);
+    try {
+      const msg = await api.jobs.sendVoiceMessage(params.jobId, recording);
+      setMessages((m) => (m.some((x) => x.id === msg.id) ? m : [...m, msg]));
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      setSendingVoice(false);
+    }
+  });
 
   async function handleSend(e: FormEvent) {
     e.preventDefault();
@@ -173,18 +189,22 @@ export default function JobPage() {
             {messages.length === 0 && (
               <p className="text-ink-soft">
                 Let {job.worker.firstName} know anything
-                they should know, like where to park or which door to use.
+                they should know, like where to park or which door to use. Type it, or tap the microphone to send a voice message.
               </p>
             )}
             {messages.map((m) => (
               <div key={m.id} className={m.senderRole === "CUSTOMER" ? "ml-auto max-w-[85%]" : "mr-auto max-w-[85%]"}>
-                <div
-                  className={`rounded-control px-4 py-2 text-lg ${
-                    m.senderRole === "CUSTOMER" ? "bg-accent text-white" : "border border-line bg-paper text-ink"
-                  }`}
-                >
-                  {m.content}
-                </div>
+                {m.voiceSeconds != null ? (
+                  <VoiceMessage message={m} mine={m.senderRole === "CUSTOMER"} />
+                ) : (
+                  <div
+                    className={`rounded-control px-4 py-2 text-lg ${
+                      m.senderRole === "CUSTOMER" ? "bg-accent text-white" : "border border-line bg-paper text-ink"
+                    }`}
+                  >
+                    {m.content}
+                  </div>
+                )}
                 {m.warning && (
                   <p role="alert" className="mt-1 rounded-control border-2 border-danger bg-danger-light px-3 py-2 text-danger">
                     {m.warning}
@@ -194,19 +214,49 @@ export default function JobPage() {
             ))}
             <div ref={endRef} />
           </div>
-          <form onSubmit={handleSend} className="flex gap-2">
-            <input
-              type="text"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Type a message…"
-              aria-label="Type a message"
-              className="min-w-0 flex-1 rounded-control border-2 border-field px-4 py-3 text-lg"
-            />
-            <BigButton type="submit" fullWidth={false} className="px-5">
-              Send
-            </BigButton>
-          </form>
+          {recorder.recording ? (
+            <div role="status" className="flex items-center gap-2 rounded-control border-2 border-danger bg-danger-light p-2">
+              <span aria-hidden="true" className="ml-2 h-3 w-3 animate-pulse rounded-full bg-danger" />
+              <span className="flex-1 text-lg font-bold text-danger">Recording {clock(recorder.seconds)}</span>
+              <button type="button" onClick={recorder.cancel} className="tap-target rounded-control px-4 font-bold text-ink-soft">
+                Cancel
+              </button>
+              <BigButton type="button" fullWidth={false} className="px-5" onClick={recorder.stop}>
+                Send
+              </BigButton>
+            </div>
+          ) : (
+            <form onSubmit={handleSend} className="flex gap-2">
+              <input
+                type="text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="Type a message…"
+                aria-label="Type a message"
+                className="min-w-0 flex-1 rounded-control border-2 border-field px-4 py-3 text-lg"
+              />
+              {recorder.supported && !text.trim() && (
+                <button
+                  type="button"
+                  onClick={recorder.start}
+                  disabled={sendingVoice}
+                  aria-label="Record a voice message"
+                  className="tap-target flex w-14 shrink-0 items-center justify-center rounded-control border-2 border-accent text-accent disabled:opacity-50"
+                >
+                  <Mic aria-hidden="true" size={26} />
+                </button>
+              )}
+              <BigButton type="submit" fullWidth={false} className="px-5">
+                Send
+              </BigButton>
+            </form>
+          )}
+          {sendingVoice && <p className="mt-2 text-ink-soft">Sending your voice message…</p>}
+          {recorder.error && (
+            <p role="alert" className="mt-2 text-danger">
+              {recorder.error}
+            </p>
+          )}
         </section>
       )}
 

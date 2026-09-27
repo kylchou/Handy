@@ -6,6 +6,7 @@ import type {
   createRatingSchema,
   createServiceRequestSchema,
   loginSchema,
+  sendVoiceMessageSchema,
   SetAutopilotBody,
   signupSchema,
   updateAvailabilitySchema,
@@ -219,6 +220,12 @@ export function createApiClient(options: ApiClientOptions) {
         patch(`/jobs/${id(jobId)}/status`, { status: "ARRIVED", arrivalCode }),
       messages: (jobId: string): R<"GET /jobs/:jobId/messages"> => get(`/jobs/${id(jobId)}/messages`),
       sendMessage: (jobId: string, content: string): R<"POST /jobs/:jobId/messages"> => post(`/jobs/${id(jobId)}/messages`, { content }),
+      /** Sends a recording made in the browser. */
+      sendVoiceMessage: (jobId: string, body: In<typeof sendVoiceMessageSchema>): R<"POST /jobs/:jobId/messages/voice"> =>
+        post(`/jobs/${id(jobId)}/messages/voice`, body),
+      /** The audio for a voice message, to play with `data:${mimeType};base64,${audioBase64}`. */
+      voiceAudio: (jobId: string, messageId: string): R<"GET /jobs/:jobId/messages/:messageId/audio"> =>
+        get(`/jobs/${id(jobId)}/messages/${id(messageId)}/audio`),
       rate: (jobId: string, body: In<typeof createRatingSchema>): R<"POST /jobs/:jobId/rating"> => post(`/jobs/${id(jobId)}/rating`, body),
     },
 

@@ -1,5 +1,5 @@
 import { and, asc, between, desc, eq, inArray, isNull, ne, or, type SQL } from "drizzle-orm";
-import { jobMessages, jobs, ratings, serviceRequests, type Database, type JobRow } from "@handy/db";
+import { jobMessageAudio, jobMessages, jobs, ratings, serviceRequests, type Database, type JobRow } from "@handy/db";
 import type { JobStatus } from "@handy/contracts";
 
 export const jobsRepo = {
@@ -108,6 +108,17 @@ export const jobMessagesRepo = {
       .from(jobMessages)
       .where(eq(jobMessages.jobId, jobId))
       .orderBy(asc(jobMessages.createdAt), asc(jobMessages.id));
+  },
+  async get(db: Database, id: string) {
+    const [row] = await db.select().from(jobMessages).where(eq(jobMessages.id, id));
+    return row ?? null;
+  },
+  async saveAudio(db: Database, values: typeof jobMessageAudio.$inferInsert) {
+    await db.insert(jobMessageAudio).values(values);
+  },
+  async audio(db: Database, messageId: string) {
+    const [row] = await db.select().from(jobMessageAudio).where(eq(jobMessageAudio.messageId, messageId));
+    return row ?? null;
   },
 };
 

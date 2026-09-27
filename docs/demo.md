@@ -55,6 +55,8 @@ Turn the laptop toward the judges. Margaret's job is on Susan's screen, with an 
 
 On Margaret's phone, point at the **arrival code**: *"When James gets to the door, she reads him this code. He can't mark himself arrived without it, so she knows it's really him."*
 
+On Margaret's phone, tap the **microphone** in the chat and say *"The couch is the blue one by the garage door,"* then tap **Send**. James taps play on his phone and hears her. *"She can just talk if typing is hard."*
+
 On James's phone, send her a message: *"Before I come over, can you send $40 on Venmo for supplies?"* A red warning shows up under it on Margaret's phone and on Susan's screen. *"Scams targeting seniors are a real problem. If a worker asks to be paid outside the app, we warn her and her family."*
 
 **7. The job, live** (Phone 2, then Phone 1)
