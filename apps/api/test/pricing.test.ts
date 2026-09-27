@@ -68,4 +68,45 @@ describe("the customer sees and agrees to the price", () => {
     expect((err as ApiRequestError).details).toMatchObject({ priceQuote: { urgentSurchargeCents: 1000, totalCents: 5000 } });
     expect((err as ApiRequestError).message).toContain("$50.00");
   });
+
+  it("adds the tip to what she pays and what the worker earns", async () => {
+    const api = await margaret();
+    const james = createApiClient({ baseUrl });
+    await james.auth.login({ email: "james@handy.demo", password: DEMO_PASSWORD });
+    const { id } = await couchChat(api);
+
+    // $40 order with a 15% tip of $6.
+    const wrong = await api.requests
+      .create({ conversationId: id, requestedDate: tomorrow(), requestedStartTime: "16:00", requestedEndTime: "17:00", location: "123 Main Street, Atlanta, GA", tipCents: 600, agreedTotalCents: 4000 })
+      .catch((e: unknown) => e);
+    expect(wrong).toMatchObject({ code: "PRICE_CHANGED" }); // the tip has to be in the total she agreed to
+
+    const { request } = await api.requests.create({
+      conversationId: id,
+      requestedDate: tomorrow(),
+      requestedStartTime: "16:00",
+      requestedEndTime: "17:00",
+      location: "123 Main Street, Atlanta, GA",
+      tipCents: 600,
+      agreedTotalCents: 4600,
+    });
+    expect(request).toMatchObject({ tipCents: 600, workerPayCents: 4100, totalPriceCents: 4600 });
+
+    const offer = (await james.jobs.available()).find((o) => o.requestId === request.id)!;
+    expect(offer).toMatchObject({ estimatedPayCents: 4100, tipCents: 600 });
+    const before = (await james.workers.earnings()).totalEarnedCents;
+    const job = await james.jobs.acceptOffer(offer.id);
+    await james.jobs.updateStatus(job.id, "EN_ROUTE");
+    await james.jobs.arrive(job.id, (await api.jobs.get(job.id)).arrivalCode!);
+    await james.jobs.updateStatus(job.id, "IN_PROGRESS");
+    const done = await james.jobs.updateStatus(job.id, "COMPLETED");
+    expect(done.finalPriceCents).toBe(4100);
+    expect((await james.workers.earnings()).totalEarnedCents - before).toBe(4100);
+    expect((await api.customers.history()).find((h) => h.requestId === request.id)?.priceCents).toBe(4600);
+
+    // A written review shows up on James's reviews for anyone to read.
+    await api.jobs.rate(job.id, { score: 5, comment: "James was careful with my couch and very kind." });
+    const [latest] = await james.workers.ratings(offer.workerId);
+    expect(latest).toMatchObject({ score: 5, comment: "James was careful with my couch and very kind.", reviewerName: "Margaret T." });
+  });
 });

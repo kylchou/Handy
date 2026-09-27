@@ -17,7 +17,7 @@ export default function JobRow({ job }: { job: JobDetailDTO }) {
             </p>
           </div>
           <div className="text-right">
-            <p className="text-lg font-bold text-accent">{formatPay(job.finalPriceCents ?? job.request.estimatedPriceCents)}</p>
+            <p className="text-lg font-bold text-accent">{formatPay(job.finalPriceCents ?? job.request.workerPayCents)}</p>
             <p className="text-sm font-bold text-ink-soft">{STATUS_LABELS[job.status]}</p>
             {job.rating && <p className="text-warm">{"★".repeat(job.rating.score)}</p>}
           </div>

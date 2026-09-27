@@ -201,7 +201,8 @@ export class JobService {
 
       let request = req;
       if (to === "COMPLETED") {
-        patch.finalPriceCents = req.estimatedPriceCents;
+        // What the worker earned: the job's price plus the customer's tip.
+        patch.finalPriceCents = req.estimatedPriceCents + req.tipCents;
         request = await requestsRepo.update(tx, req.id, { status: "COMPLETED" });
         const profile = await workersRepo.getProfile(tx, current.workerId);
         if (profile) await workersRepo.updateProfile(tx, current.workerId, { completedJobs: profile.completedJobs + 1 });

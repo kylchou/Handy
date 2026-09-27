@@ -57,7 +57,7 @@ export default function JobsPage() {
               <Pill status={j.status} />
               {j.noShowAlertedAt && j.status === "ACCEPTED" && <p className="mt-1 text-sm font-bold text-danger">Possible no-show</p>}
             </Td>
-            <Td className="whitespace-nowrap">{money(j.finalPriceCents ?? j.request.estimatedPriceCents)}</Td>
+            <Td className="whitespace-nowrap">{money(j.finalPriceCents ?? j.request.workerPayCents)}</Td>
             <Td className="whitespace-nowrap">
               {j.rating ? <span className="text-warm">{"★".repeat(j.rating.score)}</span> : <span className="text-ink-soft">-</span>}
             </Td>

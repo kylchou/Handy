@@ -39,11 +39,11 @@ When it asks to confirm, say *"Yes, that's right"*. That reply takes 10 to 15 se
 
 **3. She sees the price and agrees to it** (Phone 1)
 
-Point at the card: what, when, where, and the **Cost** section ($35 for moving help plus the $5 Handy fee, $40 total). *"Before anything is sent, she sees exactly what she'll pay, and she has to agree to it."* Tick the box, then tap **Confirm Request**.
+Point at the card: what, when, where, and the **Cost** section ($35 for moving help plus the $5 Handy fee, $40 total). Tap **15%** in the tip box and the total becomes $46. *"Before anything is sent, she sees exactly what she'll pay, tip included, and she has to agree to it. All of the tip goes to her helper."* Tick the box, then tap **Confirm Request**.
 
 **4. James gets the job** (Phone 2)
 
-The offer pops up on James's phone right away, with what he'll earn. Tap **View Job**: *"James sees what she needs, roughly where, and exactly what he'll make, before he says yes. He doesn't see her address until he accepts."* Tap **Accept for $35**.
+The offer pops up on James's phone right away, with what he'll earn. Tap **View Job**: *"James sees what she needs, roughly where, and exactly what he'll make, $35 plus her $6 tip, before he says yes. He doesn't see her address until he accepts."* Tap **Accept for $41**.
 
 Margaret's phone switches to the job page by itself.
 
@@ -63,7 +63,7 @@ James taps **I'm On My Way**, then **I've Arrived** and types the code Margaret 
 
 **8. Rate and book again** (Phone 1)
 
-Give 5 stars. James sees the rating on his phone. On Margaret's phone, go to **My Services** and point at **Book James again**: *"Next time she can just ask for James, and he gets asked first."*
+Give 5 stars and write a quick review, like *"James was careful with my couch and so kind."* James sees it on his phone. Tap **Read reviews of James** on his card: *"Other customers can read these before they book him."* On Margaret's phone, go to **My Services** and point at **Book James again**: *"Next time she can just ask for James, and he gets asked first."*
 
 **9. Behind the scenes** (Laptop, admin tab, if there's time)
 

@@ -44,7 +44,7 @@ export class RequestService {
     if (conv.customerId !== actor.id) throw forbidden("Only the customer can confirm their own request.");
     if (conv.status === "SUBMITTED") throw new ApiError("CONFLICT", "This request was already sent.");
 
-    const { conversationId: _ignored, agreedTotalCents, ...overrides } = body;
+    const { conversationId: _ignored, agreedTotalCents, tipCents = 0, ...overrides } = body;
     const draft = mergeDraft(conv.draft, overrides);
     if (draft.requestedStartTime && !draft.requestedEndTime) draft.requestedEndTime = addMinutes(draft.requestedStartTime, 60);
 
@@ -76,8 +76,8 @@ export class RequestService {
     if (!category) throw new ApiError("VALIDATION_FAILED", "Unknown service type.");
     // They agreed to a price on the confirmation card. If it's different now, stop and show them again.
     const quote = quotePrice(category.basePriceCents, draft.urgency, config.platformFeeCents);
-    if (agreedTotalCents !== undefined && agreedTotalCents !== quote.totalCents) {
-      throw new ApiError("PRICE_CHANGED", `The price for this is now $${(quote.totalCents / 100).toFixed(2)}. Please look it over and confirm again.`, {
+    if (agreedTotalCents !== undefined && agreedTotalCents !== quote.totalCents + tipCents) {
+      throw new ApiError("PRICE_CHANGED", `The price for this is now $${((quote.totalCents + tipCents) / 100).toFixed(2)}. Please look it over and confirm again.`, {
         priceQuote: quote,
       });
     }
@@ -104,6 +104,7 @@ export class RequestService {
             urgency: draft.urgency ?? "NORMAL",
             specialRequirements: draft.specialRequirements ?? [],
             preferredWorkerId: draft.preferredWorkerId ?? null,
+            tipCents,
             nextDate: addDays(draft.requestedDate!, repeatDays(draft.repeat)),
           })
         : null;
@@ -125,6 +126,7 @@ export class RequestService {
         status: "SEARCHING",
         estimatedPriceCents: quote.servicePriceCents,
         platformFeeCents: quote.platformFeeCents,
+        tipCents,
       });
       await conversationsRepo.update(tx, conv.id, { status: "SUBMITTED", draft, readyToSubmit: true, missingInformation: [] });
       await conversationsRepo.addMessage(tx, {

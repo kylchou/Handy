@@ -177,6 +177,8 @@ export const recurringSchedules = pgTable(
     urgency: text("urgency").$type<Urgency>().notNull().default("NORMAL"),
     specialRequirements: jsonb("special_requirements").$type<string[]>().notNull().default([]),
     preferredWorkerId: uuid("preferred_worker_id").references(() => users.id, { onDelete: "set null" }),
+    /** Same tip on every visit. */
+    tipCents: integer("tip_cents").notNull().default(0),
     nextDate: date("next_date", { mode: "string" }).notNull(),
     active: boolean("active").notNull().default(true),
     createdAt: createdAt(),
@@ -211,6 +213,8 @@ export const serviceRequests = pgTable(
     scheduleId: uuid("schedule_id").references(() => recurringSchedules.id, { onDelete: "set null" }),
     estimatedPriceCents: integer("estimated_price_cents").notNull(),
     platformFeeCents: integer("platform_fee_cents").notNull(),
+    /** Tip the customer chose when booking. It all goes to the worker. */
+    tipCents: integer("tip_cents").notNull().default(0),
     /** How many times offers have been broadcast (0 = initial wave). */
     matchingRound: integer("matching_round").notNull().default(0),
     lastMatchedAt: ts("last_matched_at"),

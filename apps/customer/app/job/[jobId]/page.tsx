@@ -30,6 +30,7 @@ export default function JobPage() {
   const [messages, setMessages] = useState<JobMessageDTO[]>([]);
   const [text, setText] = useState("");
   const [rating, setRating] = useState(0);
+  const [review, setReview] = useState("");
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -89,7 +90,7 @@ export default function JobPage() {
   async function handleRate() {
     if (!rating) return;
     try {
-      await api.jobs.rate(params.jobId, { score: rating });
+      await api.jobs.rate(params.jobId, { score: rating, comment: review.trim() || undefined });
       setRatingSubmitted(true);
     } catch (err) {
       setError(friendlyError(err));
@@ -130,6 +131,7 @@ export default function JobPage() {
       <p className="-mt-4 text-lg text-ink-soft">
         {job.status === "COMPLETED" ? "You paid " : "Price: "}
         <strong className="text-ink">{formatPrice(job.request.totalPriceCents)}</strong>
+        {job.request.tipCents > 0 && ` (including a ${formatPrice(job.request.tipCents)} tip)`}
         {job.status !== "COMPLETED" && job.status !== "CANCELLED" && ", paid through Handy once the job is done"}
       </p>
 
@@ -231,6 +233,18 @@ export default function JobPage() {
               </button>
             ))}
           </div>
+          <label htmlFor="review" className="mb-2 block text-left text-lg font-bold text-ink">
+            Tell others about {job.worker.firstName} <span className="font-normal text-ink-soft">(optional)</span>
+          </label>
+          <textarea
+            id="review"
+            rows={3}
+            maxLength={2000}
+            value={review}
+            onChange={(e) => setReview(e.target.value)}
+            placeholder={`What was it like working with ${job.worker.firstName}?`}
+            className="mb-4 w-full rounded-control border-2 border-field bg-white px-4 py-3 text-lg text-ink"
+          />
           <BigButton onClick={handleRate} disabled={!rating}>
             Submit Rating
           </BigButton>
