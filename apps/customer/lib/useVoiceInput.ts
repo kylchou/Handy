@@ -15,6 +15,29 @@ const ERROR_TEXT: Record<string, string> = {
 };
 
 /**
+ * Joins the recognizer's result pieces into one transcript.
+ *
+ * Chrome on Android sends each update as a new piece holding everything said
+ * so far ("move", "move it", "move it from"...), so gluing them together gave
+ * "movemove itmove it from". A piece that just extends the previous one
+ * replaces it, a repeat or shorter copy is dropped, and real separate phrases
+ * get a space between them.
+ */
+export function joinTranscripts(pieces: string[]): string {
+  const out: string[] = [];
+  for (const raw of pieces) {
+    const piece = raw.trim();
+    if (!piece) continue;
+    const last = out[out.length - 1]?.toLowerCase();
+    const lower = piece.toLowerCase();
+    if (last !== undefined && lower.startsWith(last)) out[out.length - 1] = piece;
+    else if (last !== undefined && last.startsWith(lower)) continue;
+    else out.push(piece);
+  }
+  return out.join(" ");
+}
+
+/**
  * Wraps the browser's Web Speech API. Voice is optional per spec - if
  * the browser doesn't support it, `supported` is false and the caller
  * should just hide the microphone button and rely on typing.
@@ -41,16 +64,17 @@ export function useVoiceInput(onResult: (text: string) => void) {
     }
     setSupported(true);
     const recognition = new SpeechRecognition();
-    recognition.continuous = true;
+    // Android's continuous mode repeats itself, so there it listens for one sentence at a time.
+    recognition.continuous = !/android/i.test(navigator.userAgent);
     recognition.interimResults = true;
     recognition.lang = "en-US";
 
     recognition.onstart = () => setListening(true);
     recognition.onresult = (event: any) => {
       // Whole transcript so far (final + in-progress words), so the text box fills in live.
-      let text = "";
-      for (let i = 0; i < event.results.length; i++) text += event.results[i][0].transcript;
-      onResultRef.current(text.trim());
+      const pieces: string[] = [];
+      for (let i = 0; i < event.results.length; i++) pieces.push(event.results[i][0].transcript);
+      onResultRef.current(joinTranscripts(pieces));
       clearTimeout(silenceTimer.current);
       silenceTimer.current = setTimeout(() => recognition.stop(), SILENCE_MS);
     };
