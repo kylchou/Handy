@@ -78,7 +78,7 @@ Password for all of them is `password123`.
 | `apps/customer`, `packages/ui` | Darsh |
 | `apps/api`, `packages/contracts`, `packages/db` | Kyler |
 | `services/ai`, `services/matching` | Aditya |
-| `apps/worker`, `apps/admin`, `infrastructure` | Arjun planned the hosting setup, the screens, and how jobs are shown to workers. Kyler built them |
+| `apps/worker`, `apps/admin`, `infrastructure` | Arjun |
 
 Try not to edit someone else's folder without checking with them first so we don't get merge conflicts. If you need to change a root file (`package.json`, `pnpm-workspace.yaml`, `.env.example`), let Kyler know.
 
