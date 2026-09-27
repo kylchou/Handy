@@ -64,6 +64,13 @@
       "when": 1790483269342,
       "tag": "0008_tips",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1790484519084,
+      "tag": "0009_voice_messages",
+      "breakpoints": true
     }
   ]
 }

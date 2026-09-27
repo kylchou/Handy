@@ -55,7 +55,7 @@ describe("API docs", () => {
     expect(spec.paths["/api/v1/ws"]).toBeUndefined();
     expect(spec.paths["/health"]).toBeUndefined();
     const operations = Object.values(spec.paths).reduce((n, ops) => n + Object.keys(ops).length, 0);
-    expect(operations).toBe(56); // the 55 endpoints in ApiResponses, plus the SSE stream
+    expect(operations).toBe(58); // the 57 endpoints in ApiResponses, plus the SSE stream
   });
 
   it("doesn't change how requests are validated or answered", async () => {

@@ -298,6 +298,23 @@ export const sendJobMessageSchema = z.object({
 });
 export type SendJobMessageBody = z.infer<typeof sendJobMessageSchema>;
 
+/** Longest voice message, in seconds. */
+export const MAX_VOICE_SECONDS = 60;
+
+export const sendVoiceMessageSchema = z.object({
+  /** The recording, base64. A minute of speech is usually 100 to 500 KB. */
+  audioBase64: z.string().min(1).max(1_500_000, "That recording is too long"),
+  /** What the browser recorded, like audio/webm or audio/mp4. */
+  mimeType: z.string().regex(/^audio\/[\w.+-]+(;.*)?$/, "Not an audio file").max(100),
+  durationSeconds: z.number().min(0.5).max(MAX_VOICE_SECONDS + 1),
+});
+export type SendVoiceMessageBody = z.infer<typeof sendVoiceMessageSchema>;
+
+export interface VoiceAudioResponse {
+  mimeType: string;
+  audioBase64: string;
+}
+
 // ---------- Ratings ----------
 
 export const createRatingSchema = z.object({
@@ -373,6 +390,8 @@ export interface ApiResponses {
   "PATCH /jobs/:jobId/status": JobDetailDTO;
   "GET /jobs/:jobId/messages": JobMessageDTO[];
   "POST /jobs/:jobId/messages": JobMessageDTO;
+  "POST /jobs/:jobId/messages/voice": JobMessageDTO;
+  "GET /jobs/:jobId/messages/:messageId/audio": VoiceAudioResponse;
   "POST /jobs/:jobId/rating": RatingDTO;
   "GET /notifications": NotificationDTO[];
   "POST /notifications/:notificationId/read": NotificationDTO;

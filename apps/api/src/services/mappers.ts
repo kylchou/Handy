@@ -236,6 +236,7 @@ export function toJobMessageDTO(m: JobMessageRow, sender: UserRow | undefined): 
     content: m.content,
     flags: m.flags,
     warning: m.flags.length ? m.flags.map((f) => SCAM_WARNINGS[f as ScamSignal] ?? "").filter(Boolean).join(" ") : null,
+    voiceSeconds: m.voiceSeconds,
     createdAt: m.createdAt.toISOString(),
   };
 }

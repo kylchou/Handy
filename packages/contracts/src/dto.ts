@@ -331,6 +331,8 @@ export interface JobMessageDTO {
   flags: string[];
   /** Plain-language warning to show under the message when it's flagged, otherwise null. */
   warning: string | null;
+  /** Set for voice messages: the recording's length. Get the audio with GET /jobs/:jobId/messages/:messageId/audio. */
+  voiceSeconds: number | null;
   createdAt: string;
 }
 

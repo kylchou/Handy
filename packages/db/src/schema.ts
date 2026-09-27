@@ -301,10 +301,23 @@ export const jobMessages = pgTable(
     content: text("content").notNull(),
     /** Scam signals found in the message (e.g. OFF_PLATFORM_PAYMENT), if any. */
     flags: jsonb("flags").$type<string[]>().notNull().default([]),
+    /** Set for voice messages: how long the recording is. Null for text. */
+    voiceSeconds: integer("voice_seconds"),
     createdAt: createdAt(),
   },
   (t) => [index("job_messages_job_idx").on(t.jobId, t.createdAt)],
 );
+
+/** The recording for a voice message, kept apart so listing a chat doesn't load every recording. */
+export const jobMessageAudio = pgTable("job_message_audio", {
+  messageId: uuid("message_id")
+    .primaryKey()
+    .references(() => jobMessages.id, { onDelete: "cascade" }),
+  mimeType: text("mime_type").notNull(),
+  /** The audio file, base64. Recordings are capped at about a minute, so they stay small. */
+  data: text("data").notNull(),
+  createdAt: createdAt(),
+});
 
 export const ratings = pgTable(
   "ratings",

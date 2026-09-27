@@ -8,6 +8,8 @@ import {
   type JobStatus,
   type RatingDTO,
   type RealtimeEvent,
+  type SendVoiceMessageBody,
+  type VoiceAudioResponse,
 } from "@handy/contracts";
 import type { JobRow, ServiceRequestRow, UserRow } from "@handy/db";
 import { ApiError, forbidden, notFound } from "../lib/errors";
@@ -42,6 +44,8 @@ const STATUS_TIMESTAMP: Partial<Record<JobStatus, keyof JobRow>> = {
 };
 
 const MAX_ARRIVAL_CODE_ATTEMPTS = 5;
+/** About a minute of speech, with room to spare. */
+const MAX_VOICE_BYTES = 1_000_000;
 const HOUR_MS = 60 * 60 * 1000;
 /** How late a worker can be to head out before everyone is told. */
 const NO_SHOW_GRACE_MS = 10 * 60 * 1000;
@@ -466,6 +470,48 @@ export class JobService {
     const fresh = flags.filter((f) => !alreadyFlagged.has(f));
     if (fresh.length && sender) await this.warnAboutScam(job, request, sender, fresh, content);
     return message;
+  }
+
+  /**
+   * A recorded voice message, same rules as a text one: only the job's customer
+   * and worker, and only while the job is going. Voice can't be scam-screened
+   * like text can, so this is a spot a transcription service would help later.
+   */
+  async sendVoiceMessage(actor: Actor, jobId: string, body: SendVoiceMessageBody): Promise<JobMessageDTO> {
+    const { job, request } = await this.load(actor, jobId);
+    if (actor.role === "ADMIN") throw forbidden("Admins can listen but not send job messages.");
+    if (job.status === "CANCELLED" || job.status === "COMPLETED") {
+      throw new ApiError("CONFLICT", "Messaging is closed for this job.");
+    }
+    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(body.audioBase64)) throw new ApiError("VALIDATION_FAILED", "That recording didn't come through. Please try again.");
+    if (Buffer.byteLength(body.audioBase64, "base64") > MAX_VOICE_BYTES) {
+      throw new ApiError("VALIDATION_FAILED", "That recording is too long. Please keep it under a minute.");
+    }
+
+    const row = await this.ctx.db.transaction(async (tx) => {
+      const message = await jobMessagesRepo.create(tx, {
+        jobId,
+        senderId: actor.id,
+        content: "Voice message",
+        voiceSeconds: Math.max(1, Math.round(body.durationSeconds)),
+      });
+      await jobMessagesRepo.saveAudio(tx, { messageId: message.id, mimeType: body.mimeType, data: body.audioBase64 });
+      return message;
+    });
+    const sender = await usersRepo.findById(this.ctx.db, actor.id);
+    const message = toJobMessageDTO(row, sender ?? undefined);
+    const recipient = actor.id === job.workerId ? request.customerId : job.workerId;
+    this.notifier.emit([recipient, actor.id], "MESSAGE_RECEIVED", { jobId, message });
+    return message;
+  }
+
+  /** The recording for a voice message, for the job's customer, worker, or an admin. */
+  async voiceAudio(actor: Actor, jobId: string, messageId: string): Promise<VoiceAudioResponse> {
+    await this.load(actor, jobId);
+    const message = await jobMessagesRepo.get(this.ctx.db, messageId);
+    const audio = message?.jobId === jobId ? await jobMessagesRepo.audio(this.ctx.db, messageId) : null;
+    if (!audio) throw notFound("Voice message");
+    return { mimeType: audio.mimeType, audioBase64: audio.data };
   }
 
   private async warnAboutScam(job: JobRow, request: ServiceRequestRow, worker: UserRow, signals: ScamSignal[], content: string) {
