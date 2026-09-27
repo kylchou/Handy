@@ -48,6 +48,15 @@ pnpm dev:api
 
 The API runs on http://localhost:4000, and you can try every endpoint in the browser at http://localhost:4000/docs.
 
+Then, in other terminals:
+
+```bash
+pnpm dev:customer   # customer app on http://localhost:3000
+pnpm dev:worker     # worker app on http://localhost:3001
+```
+
+Log in to the customer app as Margaret and the worker app as James (below) in two browser windows, and you can do a whole job from both sides.
+
 You don't need to install Postgres. By default it uses PGlite, which is basically Postgres running inside Node, and it saves to a `.data/` folder. The first time you start the API it creates the tables and adds demo data. If you want to use a real Postgres database instead, change `DATABASE_URL` in `.env`.
 
 ## Demo logins
@@ -68,7 +77,7 @@ Password for all of them is `password123`.
 | `apps/customer`, `packages/ui` | Darsh |
 | `apps/api`, `packages/contracts`, `packages/db` | Kyler |
 | `services/ai`, `services/matching` | Aditya |
-| `apps/worker`, `apps/admin`, `infrastructure` | Arjun |
+| `apps/worker`, `apps/admin`, `infrastructure` | Arjun planned the screens and how jobs are shown to workers, Kyler built them |
 
 Try not to edit someone else's folder without checking with them first so we don't get merge conflicts. If you need to change a root file (`package.json`, `pnpm-workspace.yaml`, `.env.example`), let Kyler know.
 
@@ -77,6 +86,7 @@ Try not to edit someone else's folder without checking with them first so we don
 ```bash
 pnpm dev:api        # start the API
 pnpm dev:customer   # start the customer app on http://localhost:3000 (start the API first)
+pnpm dev:worker     # start the worker app on http://localhost:3001
 pnpm demo reset     # demo controls: reset, autopilot on/off, go, scam, status (see docs/demo.md)
 pnpm test           # run the API tests
 pnpm typecheck      # typecheck everything
@@ -91,7 +101,7 @@ Every push to `main` and every PR runs typecheck and the tests on GitHub (once w
 - All the endpoints and live events are documented in [docs/api.md](docs/api.md), and there are interactive docs at `/docs` while the API is running.
 - The demo script, checklist, and what to do if something breaks are in [docs/demo.md](docs/demo.md).
 - To put the API online (Render, Railway, Fly, or anywhere with Docker), see [docs/deploy.md](docs/deploy.md).
-- Between demo runs, log in as admin and call `POST /api/v1/admin/demo/reset` (or `api.admin.resetDemo()`) to put everything back to the starting data without logging anyone out. Arjun, this would be a good button on the admin dashboard.
+- Between demo runs, log in as admin and call `POST /api/v1/admin/demo/reset` (or `api.admin.resetDemo()`) to put everything back to the starting data without logging anyone out.
 - Use `createApiClient` from `@handy/contracts` to call the backend instead of writing fetch calls (see the top of [docs/api.md](docs/api.md)).
 - Import shared types from `@handy/contracts` instead of making your own, so everyone stays in sync.
 - If you're using the shared packages in a Next.js app, add `transpilePackages: ["@handy/contracts"]` to `next.config.js`.
