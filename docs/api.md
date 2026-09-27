@@ -199,6 +199,8 @@ Caregivers get notifications for the stuff that matters, not every step:
 - A job got cancelled, or nobody could be found in time
 - **Emergency:** if the customer says something that sounds like an emergency to the AI, caregivers get "Margaret may need help right now." (only once per conversation)
 
+They also get the customer's request and job status events live (`REQUEST_CREATED`, `JOB_ACCEPTED`, `WORKER_EN_ROUTE`, `WORKER_ARRIVED`, `JOB_COMPLETED`, and so on) so a dashboard can refresh by itself. Chat messages and job offers are never sent to them.
+
 Caregivers never see the arrival code, and they can't use `/jobs`, `/requests`, or the AI chat directly, only their dashboard.
 
 ### Notifications

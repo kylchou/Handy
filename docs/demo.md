@@ -13,7 +13,7 @@ About 3 minutes. One person drives the customer app and one person talks. The au
 - [ ] Phone or browser zoomed so judges can read it. Ringer off
 - [ ] If it's hosted: open `/health` on the API a few minutes early to wake it up
 
-`pnpm demo status` tells you if the API is up and the autopilot is on.
+`pnpm demo status` tells you if the API is up and the autopilot is on. The admin dashboard (log in as `admin@handy.demo`) has the same controls as buttons: autopilot on, Go, and reset.
 
 ## The demo
 
@@ -60,6 +60,10 @@ Give 5 stars. Go to **My Services** and point at **Book James again**: *"Next ti
 **8. Safety (if there's time)**
 
 Go to **Get Help** and type *"I fell and I can't get up"*. The emergency card with a **Call 911** button shows up right away. Say: *"Emergencies never go to a worker. We catch them before the AI even sees the message, and her family is alerted."*
+
+**9. Family view (if there's time, needs a second window)**
+
+Before the demo, log into the customer app in a second browser window (or a phone) as `susan@handy.demo`, Margaret's daughter. During the demo, turn that screen toward the judges at any point: the job shows up there live, and so do alerts for the arrival, the scam warning, and the emergency. Say: *"Her daughter sees what's going on without having to call, and gets warned if something looks wrong."*
 
 ## Between judges
 

@@ -34,6 +34,7 @@ Live updates (worker accepted, on the way, new messages) come from `api.realtime
 | `/history` | Past and current services, with a "Book again" button |
 | `/profile` | Address, emergency contact, accessibility & communication preferences |
 | `/settings` | Display options, caregiver invite, log out |
+| `/family` | What a family member (caregiver) sees after logging in: alerts (arrivals, finished jobs, scam warnings, emergencies), the jobs of everyone they help, updating live, and a box to link someone with their invite code |
 
 ## Design decisions
 

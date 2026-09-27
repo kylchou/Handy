@@ -27,6 +27,24 @@ export interface Actor {
 
 type EventOf<T extends RealtimeEvent["type"]> = Extract<RealtimeEvent, { type: T }>;
 
+/**
+ * Status changes a customer's family also gets live, so their dashboard moves
+ * along without refreshing. Just ids and statuses; chat messages stay private.
+ */
+const FAMILY_EVENTS = new Set<RealtimeEvent["type"]>([
+  "REQUEST_CREATED",
+  "REQUEST_CANCELLED",
+  "REQUEST_EXPIRED",
+  "WORKER_MATCHED",
+  "JOB_ACCEPTED",
+  "WORKER_EN_ROUTE",
+  "WORKER_ARRIVED",
+  "JOB_STARTED",
+  "JOB_COMPLETED",
+  "JOB_CANCELLED",
+  "RATING_SUBMITTED",
+]);
+
 /** Builds a caregiver's version of a notification from the customer's first name. */
 export type CaregiverMessage = (customerFirstName: string) => { title: string; body?: string | null };
 
@@ -35,7 +53,20 @@ export class Notifier {
   constructor(private ctx: ServiceContext) {}
 
   emit<T extends RealtimeEvent["type"]>(userIds: string[], type: T, data: EventOf<T>["data"]): void {
-    this.ctx.bus.publish(userIds, { type, at: new Date().toISOString(), data } as NewRealtimeEvent);
+    const event = { type, at: new Date().toISOString(), data } as NewRealtimeEvent;
+    this.ctx.bus.publish(userIds, event);
+    if (FAMILY_EVENTS.has(type)) void this.alsoToFamily(userIds, event);
+  }
+
+  /** Sends the same event to caregivers of any customer among `userIds`. */
+  private async alsoToFamily(userIds: string[], event: NewRealtimeEvent) {
+    try {
+      const links = (await Promise.all(userIds.map((id) => caregiversRepo.caregiversOf(this.ctx.db, id)))).flat();
+      const caregivers = [...new Set(links.map((l) => l.caregiverId))].filter((id) => !userIds.includes(id));
+      if (caregivers.length) this.ctx.bus.publish(caregivers, event);
+    } catch (err) {
+      this.ctx.log.warn({ err }, "couldn't send a live update to family");
+    }
   }
 
   /**

@@ -53,6 +53,7 @@ Then, in other terminals:
 ```bash
 pnpm dev:customer   # customer app on http://localhost:3000
 pnpm dev:worker     # worker app on http://localhost:3001
+pnpm dev:admin      # admin dashboard on http://localhost:3002
 ```
 
 Log in to the customer app as Margaret and the worker app as James (below) in two browser windows, and you can do a whole job from both sides.
@@ -67,7 +68,7 @@ Password for all of them is `password123`.
 - `james@handy.demo` - worker (moving + home repairs, best match for the couch demo)
 - `tom@handy.demo`, `maria@handy.demo`, `david@handy.demo`, `aisha@handy.demo`, `grace@handy.demo`, `marcus@handy.demo` - more workers
 - `linda@handy.demo` - worker who isn't verified yet, so she won't get jobs until an admin approves her
-- `susan@handy.demo` - caregiver (Margaret's daughter), already linked to Margaret
+- `susan@handy.demo` - caregiver (Margaret's daughter), already linked to Margaret. Log into the customer app as her to see the family view
 - `admin@handy.demo` - admin
 
 ## Who's working on what
@@ -87,6 +88,7 @@ Try not to edit someone else's folder without checking with them first so we don
 pnpm dev:api        # start the API
 pnpm dev:customer   # start the customer app on http://localhost:3000 (start the API first)
 pnpm dev:worker     # start the worker app on http://localhost:3001
+pnpm dev:admin      # start the admin dashboard on http://localhost:3002
 pnpm demo reset     # demo controls: reset, autopilot on/off, go, scam, status (see docs/demo.md)
 pnpm test           # run the API tests
 pnpm typecheck      # typecheck everything
