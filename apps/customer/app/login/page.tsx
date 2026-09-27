@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import BigButton from "@/components/BigButton";
+import PasswordInput from "@/components/PasswordInput";
 import { api, friendlyError, ROLE_KEY } from "@/lib/api";
 
 export default function LoginPage() {
@@ -54,9 +55,8 @@ export default function LoginPage() {
           <label htmlFor="password" className="mb-2 block text-lg font-bold text-ink">
             Password
           </label>
-          <input
+          <PasswordInput
             id="password"
-            type="password"
             autoComplete="current-password"
             required
             value={password}

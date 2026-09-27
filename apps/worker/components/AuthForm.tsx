@@ -2,6 +2,7 @@
 
 import type { FormEvent, ReactNode } from "react";
 import Button from "./Button";
+import PasswordInput from "./PasswordInput";
 import { ErrorNote } from "./Page";
 
 export interface Field {
@@ -53,14 +54,24 @@ export default function AuthForm({
               {f.label} {f.optional && <span className="font-normal text-ink-soft">(optional)</span>}
             </label>
             {f.hint && <p className="mb-1 text-sm text-ink-soft">{f.hint}</p>}
-            <input
-              id={f.key}
-              type={f.type ?? "text"}
-              autoComplete={f.autoComplete}
-              value={values[f.key] ?? ""}
-              onChange={(e) => onChange(f.key, e.target.value)}
-              className="w-full rounded-control border-2 border-field/60 bg-white px-4 py-3 text-lg text-ink"
-            />
+            {f.type === "password" ? (
+              <PasswordInput
+                id={f.key}
+                autoComplete={f.autoComplete}
+                value={values[f.key] ?? ""}
+                onChange={(e) => onChange(f.key, e.target.value)}
+                className="w-full rounded-control border-2 border-field/60 bg-white px-4 py-3 text-lg text-ink"
+              />
+            ) : (
+              <input
+                id={f.key}
+                type={f.type ?? "text"}
+                autoComplete={f.autoComplete}
+                value={values[f.key] ?? ""}
+                onChange={(e) => onChange(f.key, e.target.value)}
+                className="w-full rounded-control border-2 border-field/60 bg-white px-4 py-3 text-lg text-ink"
+              />
+            )}
           </div>
         ))}
         {error && <ErrorNote>{error}</ErrorNote>}
